@@ -9,35 +9,32 @@
 
 > [!IMPORTANT]
 > **ClassNEWS Beta 发布预告**
-> 
 > 首个 Beta 版本预计 **3月28日** 发布。
-> 
-> - ✅ 基础功能可用
-> - 📺 清晰度暂为标清（高清方案研究中）
-> - 🐛 存在少量待排查问题
-> - 📰 目前仅支持「朝闻天下」，后续将开放自定义新闻源
-> - 🔌 Beta 发布后优先开发 ClassIsland 插件
-> 
-> 💬 欢迎积极反馈，你的意见直接影响产品方向！
+> -  基础功能可用
+> -  清晰度暂为标清（高清方案研究中）
+> -  存在少量待排查问题
+> -  目前仅支持「朝闻天下」，后续将开放自定义新闻源
+> -  Beta 发布后优先开发 ClassIsland 插件
+>>  欢迎积极反馈，你的意见直接影响产品方向！
 
 ---
 
-## 📖 项目简介
+## 项目简介
 
 ClassNEWS 是一个现代化的桌面新闻应用，采用 Fluent Design 设计风格，提供流畅的用户体验。应用支持 CCTV 新闻节目的实时获取、视频播放，以及通过自定义协议（classnews://）进行外部调用。
 
 ### 主要特性
 
-- 📺 **新闻聚合** - 自动获取 CCTV 新闻节目，包括《朝闻天下》、《新闻联播》等
-- 🎬 **视频播放** - 内置视频播放器，支持倍速播放、音量调节、进度控制
-- 🔗 **协议支持** - 支持 `classnews://` 协议，允许第三方应用调用播放
-- 🎨 **Fluent Design** - 采用微软 Fluent Design 设计系统，支持浅色/深色主题
-- 🔔 **系统通知** - 支持系统级通知提醒
-- ⚙️ **丰富设置** - 支持开机自启动、默认音量、倍速、进度等个性化配置
+-  **新闻聚合** - 自动获取 CCTV 新闻节目，包括《朝闻天下》、《新闻联播》等
+-  **视频播放** - 内置视频播放器，支持倍速播放、音量调节、进度控制
+-  **协议支持** - 支持 `classnews://` 协议，允许第三方应用调用播放
+-  **Fluent Design** - 采用微软 Fluent Design 设计系统，支持浅色/深色主题
+-  **系统通知** - 支持系统级通知提醒
+-  **丰富设置** - 支持开机自启动、默认音量、倍速、进度等个性化配置
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
@@ -58,9 +55,9 @@ python main.py
 
 ---
 
-## 📊 项目统计
+## 项目统计
 
-### 👥 贡献者
+### 贡献者
 
 <a href="https://github.com/apanzinc/ClassNEWS/graphs/contributors">
   <img src="https://contrib.nn.ci/api?repo=apanzinc/ClassNEWS" alt="Contributors" />
@@ -70,7 +67,7 @@ python main.py
 
 欢迎提交 Issue 和 Pull Request！
 
-### ⭐ 星标历史
+### 星标历史
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=apanzinc/ClassNEWS&type=Date&theme=dark" />
@@ -80,12 +77,8 @@ python main.py
 
 ---
 
-## � 感谢
+##  感谢
 
-### 作者
-- **APANZINC** - 项目创始人
-
-### 开源项目
 | 项目 | 说明 | 链接 |
 |------|------|------|
 | **RinUI** | Fluent Design 组件库 | [GitHub](https://github.com/RinLit-233-shiroko/Rin-UI) |
@@ -94,16 +87,17 @@ python main.py
 | **PySide6** | Qt for Python 绑定 | [Qt for Python](https://wiki.qt.io/Qt_for_Python) |
 
 ### 特别感谢
-- 🙏 **佛祖** - 位于 main.py，保佑代码永无 BUG
+
+-  **佛祖** - 位于 main.py，保佑代码永无 BUG
 
 ---
 
-## �📄 许可证
+##  许可证
 
 本项目采用 [AGPL-3.0](LICENSE) 许可证。
 
----
+这是我第一次写这么大的项目，感谢大家的支持。
 
-<p align="center">
-  <sub>Built with ❤️ using Python & Qt</sub>
-</p>
+2026 ©apaniznc
+
+---

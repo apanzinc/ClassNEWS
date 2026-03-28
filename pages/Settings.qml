@@ -400,7 +400,8 @@ FluentPage {
                     border.color: Utils.colors.textColor
 
                     MouseArea {
-                        anchors.fill: parent
+                        Layout.fillWidth: true
+        Layout.fillHeight: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             ThemeManager.set_theme_color("")
@@ -419,7 +420,8 @@ FluentPage {
                     border.color: Utils.colors.textColor
 
                     MouseArea {
-                        anchors.fill: parent
+                        Layout.fillWidth: true
+        Layout.fillHeight: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             ThemeManager.set_theme_color("#EF3E4B")
@@ -438,7 +440,8 @@ FluentPage {
                     border.color: Utils.colors.textColor
 
                     MouseArea {
-                        anchors.fill: parent
+                        Layout.fillWidth: true
+        Layout.fillHeight: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             ThemeManager.set_theme_color("#027CFF")
@@ -457,7 +460,8 @@ FluentPage {
                     border.color: Utils.colors.textColor
 
                     MouseArea {
-                        anchors.fill: parent
+                        Layout.fillWidth: true
+        Layout.fillHeight: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             ThemeManager.set_theme_color("#E100FF")
@@ -808,7 +812,7 @@ FluentPage {
                 Layout.fillWidth: true
                 title: qsTr("显示详细日志")
                 description: qsTr("记录点击事件等详细信息")
-                visible: debugModeSwitch.checked
+                visible: debugModeSwitch.checked ? true : false
 
                 Switch {
                     checked: appLogger ? appLogger.showDebugDetails : false
@@ -959,7 +963,8 @@ FluentPage {
                 radius: 4
 
                 TextArea {
-                    anchors.fill: parent
+                    Layout.fillWidth: true
+        Layout.fillHeight: true
                     anchors.margins: 8
                     readOnly: true
                     wrapMode: Text.Wrap
@@ -1111,9 +1116,5 @@ FluentPage {
         Layout.fillHeight: true
     }
 
-    // 水印组件
-    Loader {
-        anchors.fill: parent
-        source: "../components/Watermark.qml"
-    }
+
 }

@@ -406,5 +406,6 @@ FluentWindow {
         console.log("当前主题:", ThemeManager.get_theme());
         console.log("主题设置:", ThemeManager.get_theme_name());
         console.log("主题色:", ThemeManager.get_theme_color());
+        mainWindow.engine.rootContext().setContextProperty("ThemeManager", ThemeManager);
     }
 }

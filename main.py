@@ -633,6 +633,7 @@ class VideoManager(QObject):
         self._program_worker = None
         self._config_manager = config_manager
         self._toast_notifier = None
+        self._notification = None
         # 初始化 Windows 系统通知
         self._init_toast_notifier()
 
@@ -1669,6 +1670,23 @@ def main():
         # 从 RinUIWindow 获取 win_event_filter 并设置给 window_manager
         win_event_filter = getattr(window, 'win_event_filter', None)
         logger.debug(LogCategory.SYSTEM, "Main", f"WinEventFilter retrieved: {win_event_filter}")
+        
+        # 替换为自定义窗口事件过滤器，修复标题栏拖动问题
+        if win_event_filter and sys.platform == "win32":
+            from custom_window_filter import CustomWindowEventFilter
+            
+            # 移除旧的过滤器
+            app.removeNativeEventFilter(win_event_filter)
+            
+            # 创建并安装新的过滤器
+            custom_filter = CustomWindowEventFilter(window.windows)
+            app.installNativeEventFilter(custom_filter)
+            
+            # 更新引用
+            window.win_event_filter = custom_filter
+            win_event_filter = custom_filter
+            logger.success(LogCategory.SYSTEM, "Main", "Custom window event filter installed / 自定义窗口事件过滤器已安装")
+        
         window_manager._win_event_filter = win_event_filter
 
         # 创建系统托盘管理器

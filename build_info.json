@@ -1,19 +1,19 @@
 {
   "version": "1.0",
-  "buildDate": "2026/03/26",
-  "buildTime": "22:31",
-  "buildNumber": "4",
+  "buildDate": "2026/03/28",
+  "buildTime": "18:19",
+  "buildNumber": "2",
   "gitCommit": "unknown",
   "gitBranch": "main",
-  "compiler": "Python 3.14",
+  "compiler": "Python 3.14.3",
   "qtVersion": "6.x",
   "platform": "Windows",
   "architecture": "x64",
-  "releaseType": "beta",
+  "releaseType": "release",
   "appName": "ClassNEWS",
   "appId": "ClassNEWS.App.1.0",
   "company": "APANZINC",
   "copyright": "Copyright 2025 APANZINC",
   "license": "GPL-3.0",
-  "buildType": "beta"
+  "buildType": "release"
 }

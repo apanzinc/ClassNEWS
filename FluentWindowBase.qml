@@ -1,17 +1,10 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 2.15
-import "../themes"
-import "../windows"
-import "../components"
+import RinUI
 
 ApplicationWindow {
     id: baseWindow
-    // visible: true
-    // width: 800
-    // height: 600
-    // minimumWidth: 400
-    // minimumHeight: 300
     property int hwnd: 0
     property bool isRinUIWindow: true
 
@@ -19,10 +12,9 @@ ApplicationWindow {
     color: "transparent"
 
     // 自定义属性
-    property var icon: ""  // 图标
+    property var icon: ""
     property alias titleEnabled: titleBar.titleEnabled
     property alias minimizeEnabled: titleBar.minimizeEnabled
-    // property alias maximizeEnabled: titleBar.maximizeEnabled
     property bool maximizeEnabled: maximumHeight === 16777215 && maximumWidth === 16777215
     property alias closeEnabled: titleBar.closeEnabled
 
@@ -33,9 +25,8 @@ ApplicationWindow {
     property int titleBarHeight: Theme.currentTheme.appearance.dialogTitleBarHeight
     property alias titleBarArea: titleBar.content
 
-
     // 直接添加子项
-    property alias framelessMenuBar: menuBarArea.children  // 无边框模式时菜单栏
+    property alias framelessMenuBar: menuBarArea.children
     default property alias content: contentArea.children
     property alias floatLayer: floatLayer
 
@@ -53,19 +44,18 @@ ApplicationWindow {
     // 布局
     ColumnLayout {
         anchors.fill: parent
-        // anchors.topMargin: Utils.windowDragArea
         anchors.bottomMargin: Utils.windowDragArea
         anchors.leftMargin: Utils.windowDragArea
         anchors.rightMargin: Utils.windowDragArea
         spacing: 0
 
-        // 顶部边距
+        // 顶部边距 - 为标题栏预留空间
         Item {
             Layout.preferredHeight: titleBar.height
             Layout.fillWidth: true
         }
 
-        // 菜单栏
+        // menubar
         Item {
             id: menuBarArea
             Layout.fillWidth: true
@@ -79,18 +69,19 @@ ApplicationWindow {
         }
     }
 
-    // 标题栏
+    // 标题栏 - 放在 ColumnLayout 之外，确保点击事件不被拦截
     TitleBar {
         id: titleBar
         window: baseWindow
         icon: baseWindow.icon || ""
         title: baseWindow.title || ""
-        Layout.fillWidth: true
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
         height: baseWindow.titleBarHeight
-
         maximizeEnabled: baseWindow.maximizeEnabled
+        z: 1000  // 确保标题栏在最上层
     }
-
 
     // 背景样式
     background: Rectangle {
@@ -98,13 +89,11 @@ ApplicationWindow {
         anchors.fill: parent
         color: Utils.backdropEnabled ? "transparent" : Theme.currentTheme.colors.backgroundColor
         border.color: Theme.currentTheme.colors.windowBorderColor
-        layer.enabled: true  // 启用透明渲染
+        layer.enabled: true
         border.width: 1
         radius: Theme.currentTheme.appearance.windowRadius
         z: -1
         clip: true
-
-        // Shadow {}
 
         Behavior on color {
             ColorAnimation {
@@ -123,43 +112,5 @@ ApplicationWindow {
         id: floatLayer
         anchors.topMargin: titleBarHeight
         z: 998
-    }
-
-
-    //改变鼠标形状
-    MouseArea {
-        anchors.fill: parent
-        hoverEnabled: baseWindow.visibility !== Window.Maximized
-        z: -1
-        cursorShape: {
-            const p = Qt.point(mouseX, mouseY)
-            const b = Utils.windowDragArea
-            if (p.x < b && p.y < b) return Qt.SizeFDiagCursor
-            if (p.x >= width - b && p.y >= height - b) return Qt.SizeFDiagCursor
-            if (p.x >= width - b && p.y < b) return Qt.SizeBDiagCursor
-            if (p.x < b && p.y >= height - b) return Qt.SizeBDiagCursor
-            if (p.x < b || p.x >= width - b) return Qt.SizeHorCursor
-            if (p.y < b || p.y >= height - b) return Qt.SizeVerCursor
-        }
-        acceptedButtons: Qt.NoButton
-    }
-
-    DragHandler {
-        id: resizeHandler
-        grabPermissions: TapHandler.TakeOverForbidden
-        target: null
-        enabled: Qt.platform.os !== "windows"
-        onActiveChanged: if (active && baseWindow.visibility !== Window.Maximized) {
-            const p = resizeHandler.centroid.position
-            const b = Utils.windowDragArea
-            let e = 0;
-            if (p.x < b) e |= Qt.LeftEdge
-            if (p.x >= width - b) e |= Qt.RightEdge
-            if (p.y < b) e |= Qt.TopEdge
-            if (p.y >= height - b) e |= Qt.BottomEdge
-            if (e !== 0) {
-                baseWindow.startSystemResize(e)
-            }
-        }
     }
 }

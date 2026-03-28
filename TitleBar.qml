@@ -2,9 +2,7 @@ import QtQuick 2.12
 import QtQuick.Controls 2.3
 import QtQuick.Layouts
 import QtQuick.Window 2.3
-import "../themes"
-import "../components"
-import "../windows"
+import RinUI
 
 Item {
     id: root
@@ -51,38 +49,67 @@ Item {
         color: "transparent"
 
         MouseArea {
+            id: dragMouseArea
             anchors.fill: parent
             anchors.leftMargin: 48
             anchors.margins: Utils.windowDragArea
             propagateComposedEvents: true
             acceptedButtons: Qt.LeftButton
-            property point clickPos: "0,0"
+            
+            // 关键修复：启用 hover 以正确跟踪鼠标状态
+            hoverEnabled: true
+            
+            // 使用纯 Qt 方式实现拖动
+            property point startMousePos: Qt.point(0, 0)
+            property point startWindowPos: Qt.point(0, 0)
+            property bool dragging: false
 
-            onPressed: {
-                clickPos = Qt.point(mouseX, mouseY)
-
-                if (Qt.platform.os !== "windows" || !WindowManager._isWinMgrInitialized()) {
-                    return
-                }
-                WindowManager.sendDragWindowEvent(window)
+            onPressed: (mouse) => {
+                // 记录初始位置
+                startMousePos = Qt.point(mouse.x, mouse.y)
+                startWindowPos = Qt.point(window.x, window.y)
+                dragging = true
+                // 强制捕获鼠标
+                mouse.accepted = true
             }
-            onDoubleClicked: toggleMaximized()
+            
+            onReleased: {
+                dragging = false
+            }
+            
             onPositionChanged: (mouse) => {
+                if (!dragging) return
                 if (window.isMaximized || window.isFullScreen || window.visibility === Window.Maximized) {
                     return
                 }
-
-                if (Qt.platform.os !== "windows" && WindowManager._isWinMgrInitialized()) {
-                    log("Windows only")
-                    return  // 在win环境使用原生方法拖拽
-                }
-
-                //鼠标偏移量
-                let delta = Qt.point(mouse.x-clickPos.x, mouse.y-clickPos.y)
-
-                window.setX(window.x+delta.x)
-                window.setY(window.y+delta.y)
+                
+                // 计算偏移量并移动窗口
+                var deltaX = mouse.x - startMousePos.x
+                var deltaY = mouse.y - startMousePos.y
+                window.x = startWindowPos.x + deltaX
+                window.y = startWindowPos.y + deltaY
             }
+            
+            onCanceled: {
+                dragging = false
+            }
+            
+            // 关键修复：当鼠标进入时重置状态
+            onEntered: {
+                // 重置拖动状态
+                if (dragging && !pressed) {
+                    dragging = false
+                }
+            }
+            
+            // 关键修复：当鼠标离开时清理状态
+            onExited: {
+                if (dragging && !pressed) {
+                    dragging = false
+                }
+            }
+            
+            onDoubleClicked: toggleMaximized()
         }
     }
 
@@ -129,7 +156,7 @@ Item {
         }
 
         // 窗口按钮 / Window Controls
-        Row {
+        RowLayout {
             width: implicitWidth
             Layout.fillHeight: true
             Layout.alignment: Qt.AlignRight
@@ -138,17 +165,23 @@ Item {
                 id: minimizeBtn
                 mode: 1
                 enabled: root.minimizeEnabled
+                window: root.window  // 传入 window 属性
+                Layout.fillHeight: true
             }
             CtrlBtn {
                 id: maximizeBtn
                 mode: 0
                 enabled: root.maximizeEnabled
+                window: root.window  // 传入 window 属性
+                Layout.fillHeight: true
 
             }
             CtrlBtn {
                 id: closeBtn
                 mode: 2
                 enabled: root.closeEnabled
+                window: root.window  // 传入 window 属性
+                Layout.fillHeight: true
             }
         }
     }

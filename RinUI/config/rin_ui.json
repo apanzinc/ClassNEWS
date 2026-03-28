@@ -1,0 +1,11 @@
+{
+    "theme": {
+        "current_theme": "Light"
+    },
+    "win10_feat": {
+        "backdrop_light": 2801795071,
+        "backdrop_dark": 2785017856
+    },
+    "theme_color": "#EF3E4B",
+    "backdrop_effect": "mica"
+}

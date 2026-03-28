@@ -458,6 +458,7 @@ FluentWindow {
         MouseArea {
             id: videoClickArea
             anchors.fill: parent
+            anchors.topMargin: videoPlayerWindow.titleBarHeight  // 避开标题栏区域
             onClicked: {
                 // 点击视频任意位置显示控制栏
                 controlsVisible = true

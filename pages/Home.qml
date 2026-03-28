@@ -1554,9 +1554,5 @@ Rectangle {
         }
     }
 
-    // 水印组件
-    Loader {
-        anchors.fill: parent
-        source: "../components/Watermark.qml"
-    }
+
 }

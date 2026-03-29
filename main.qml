@@ -77,7 +77,7 @@ FluentWindow {
         id: videoLoadingFlyout
         parent: mainWindow.contentItem || mainWindow
         text: qsTr("正在加载视频...")
-        
+
         // 自动关闭定时器
         Timer {
             id: hideFlyoutTimer
@@ -85,6 +85,14 @@ FluentWindow {
             onTriggered: videoLoadingFlyout.close()
         }
     }
+
+    // 下载对话框
+    DownloadDialog {
+        id: downloadDialog
+    }
+
+    // 当前待下载的视频信息
+    property var pendingDownload: null
 
     // 连接视频管理器的信号
     Connections {
@@ -95,6 +103,22 @@ FluentWindow {
             // 检查视频URL是否有效
             if (!videoUrl || videoUrl === "") {
                 console.log("视频URL为空，不播放")
+                return
+            }
+
+            // 检查是否有待处理的下载请求
+            if (pendingDownload !== null && pendingDownload.title === title) {
+                console.log("开始下载视频:", title)
+                // 显示下载对话框，传入图片和摘要
+                downloadDialog.openDialog(
+                    pendingDownload.videoId,
+                    title,
+                    videoUrl,
+                    pendingDownload.image,
+                    pendingDownload.summary
+                )
+                // 清空待下载状态
+                pendingDownload = null
                 return
             }
 
@@ -148,8 +172,41 @@ FluentWindow {
             if (videoManager) {
                 videoManager.showSystemNotification("ClassNEWS - 播放失败", errorMsg)
             }
+            // 如果有待下载任务，清空它
+            if (pendingDownload !== null) {
+                pendingDownload = null
+            }
         }
     }
+
+    // 连接下载管理器的信号
+    Connections {
+        target: downloadManager
+        function onDownload_progress(downloadId, downloaded, total, speed) {
+            if (downloadDialog.downloadId === downloadId) {
+                var progress = total > 0 ? Math.round((downloaded / total) * 100) : 0
+                var speedStr = downloadManager.formatSpeed(speed)
+                downloadDialog.updateProgress(progress, speedStr, total)
+            }
+        }
+        function onDownload_completed(downloadId, filePath) {
+            if (downloadDialog.downloadId === downloadId) {
+                downloadDialog.setStatus("completed")
+            }
+        }
+        function onDownload_error(downloadId, errorMsg) {
+            if (downloadDialog.downloadId === downloadId) {
+                downloadDialog.setStatus("error")
+            }
+        }
+        function onDownload_status_changed(downloadId, status) {
+            if (downloadDialog.downloadId === downloadId) {
+                downloadDialog.setStatus(status)
+            }
+        }
+    }
+
+
 
     // 连接协议管理器的信号
     Connections {

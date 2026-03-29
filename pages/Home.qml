@@ -521,6 +521,22 @@ Rectangle {
                                 onClicked: mainFlyout.close()
                             },
                             Button {
+                                text: qsTr("下载")
+                                onClicked: {
+                                    var newsItem = mainCard.mainNewsItem
+                                    if (newsItem && newsItem.videoId) {
+                                        mainWindow.pendingDownload = {
+                                            videoId: newsItem.videoId,
+                                            title: newsItem.title,
+                                            image: newsItem.image,
+                                            summary: newsItem.summary
+                                        }
+                                        videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                    }
+                                    mainFlyout.close()
+                                }
+                            },
+                            Button {
                                 text: qsTr("播放")
                                 highlighted: true
                                 onClicked: {
@@ -769,6 +785,21 @@ Rectangle {
                                     onClicked: gridFlyout.close()
                                 },
                                 Button {
+                                    text: qsTr("下载")
+                                    onClicked: {
+                                        if (newsItem && newsItem.videoId) {
+                                            mainWindow.pendingDownload = {
+                                                videoId: newsItem.videoId,
+                                                title: newsItem.title,
+                                                image: newsItem.image,
+                                                summary: newsItem.summary
+                                            }
+                                            videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                        }
+                                        gridFlyout.close()
+                                    }
+                                },
+                                Button {
                                     text: qsTr("播放")
                                     highlighted: true
                                     onClicked: {
@@ -980,6 +1011,22 @@ Rectangle {
                                 onClicked: compactCard1Flyout.close()
                             },
                             Button {
+                                text: qsTr("下载")
+                                onClicked: {
+                                    var item = compactCard1Flyout.currentNewsItem
+                                    if (item && item.videoId) {
+                                        mainWindow.pendingDownload = {
+                                            videoId: item.videoId,
+                                            title: item.title,
+                                            image: item.image,
+                                            summary: item.summary
+                                        }
+                                        videoManager.parseVideo(item.videoId, item.title)
+                                    }
+                                    compactCard1Flyout.close()
+                                }
+                            },
+                            Button {
                                 text: qsTr("播放")
                                 highlighted: true
                                 onClicked: {
@@ -1144,6 +1191,22 @@ Rectangle {
                                 Button {
                                     text: qsTr("关闭")
                                     onClicked: compactCardFlyout.close()
+                                },
+                                Button {
+                                    text: qsTr("下载")
+                                    onClicked: {
+                                        var item = compactCardFlyout.currentNewsItem
+                                        if (item && item.videoId) {
+                                            mainWindow.pendingDownload = {
+                                                videoId: item.videoId,
+                                                title: item.title,
+                                                image: item.image,
+                                                summary: item.summary
+                                            }
+                                            videoManager.parseVideo(item.videoId, item.title)
+                                        }
+                                        compactCardFlyout.close()
+                                    }
                                 },
                                 Button {
                                     text: qsTr("播放")
@@ -1329,6 +1392,22 @@ Rectangle {
                                 Button {
                                     text: qsTr("关闭")
                                     onClicked: bottomFlyout.close()
+                                },
+                                Button {
+                                    text: qsTr("下载")
+                                    onClicked: {
+                                        var item = bottomFlyout.currentNewsItem
+                                        if (item && item.videoId) {
+                                            mainWindow.pendingDownload = {
+                                                videoId: item.videoId,
+                                                title: item.title,
+                                                image: item.image,
+                                                summary: item.summary
+                                            }
+                                            videoManager.parseVideo(item.videoId, item.title)
+                                        }
+                                        bottomFlyout.close()
+                                    }
                                 },
                                 Button {
                                     text: qsTr("播放")
@@ -1525,6 +1604,22 @@ Rectangle {
                                 Button {
                                     text: qsTr("关闭")
                                     onClicked: moreNewsFlyout.close()
+                                },
+                                Button {
+                                    text: qsTr("下载")
+                                    onClicked: {
+                                        var item = moreNewsFlyout.currentNewsItem
+                                        if (item && item.videoId) {
+                                            mainWindow.pendingDownload = {
+                                                videoId: item.videoId,
+                                                title: item.title,
+                                                image: item.image,
+                                                summary: item.summary
+                                            }
+                                            videoManager.parseVideo(item.videoId, item.title)
+                                        }
+                                        moreNewsFlyout.close()
+                                    }
                                 },
                                 Button {
                                     text: qsTr("播放")

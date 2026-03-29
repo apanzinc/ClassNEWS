@@ -206,8 +206,6 @@ FluentWindow {
         }
     }
 
-
-
     // 连接协议管理器的信号
     Connections {
         target: protocolManager

@@ -51,6 +51,7 @@ setup_rinui_path()
 from RinUI import RinUIWindow  # 使用 RinUIWindow 来正确初始化
 from news_api import fetch_news
 from logger import init_logger, get_logger, LogCategory
+from download_manager import DownloadManager
 
 r"""
                             _ooOoo_
@@ -1627,6 +1628,10 @@ def main():
         video_manager = VideoManager(config_manager)
         logger.success(LogCategory.VIDEO, "Main", "Video manager created / 视频管理器已创建")
 
+        # 创建下载管理器
+        download_manager = DownloadManager()
+        logger.success(LogCategory.VIDEO, "Main", "Download manager created / 下载管理器已创建")
+
         # 创建协议管理器
         protocol_manager = ProtocolManager(video_manager, news_manager)
         logger.success(LogCategory.SYSTEM, "Main", "Protocol manager created / 协议管理器已创建")
@@ -1640,6 +1645,7 @@ def main():
         window.engine.rootContext().setContextProperty("systemInfo", system_info)
         window.engine.rootContext().setContextProperty("windowManager", window_manager)
         window.engine.rootContext().setContextProperty("videoManager", video_manager)
+        window.engine.rootContext().setContextProperty("downloadManager", download_manager)
         window.engine.rootContext().setContextProperty("configManager", config_manager)
         window.engine.rootContext().setContextProperty("appLogger", logger)
         window.engine.rootContext().setContextProperty("protocolManager", protocol_manager)

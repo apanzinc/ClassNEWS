@@ -77,7 +77,7 @@ FluentWindow {
         id: videoLoadingFlyout
         parent: mainWindow.contentItem || mainWindow
         text: qsTr("正在加载视频...")
-        
+
         // 自动关闭定时器
         Timer {
             id: hideFlyoutTimer
@@ -85,6 +85,15 @@ FluentWindow {
             onTriggered: videoLoadingFlyout.close()
         }
     }
+
+    // 下载浮出控件
+    DownloadFlyout {
+        id: downloadFlyout
+        parent: mainWindow.contentItem || mainWindow
+    }
+
+    // 当前待下载的视频信息
+    property var pendingDownload: null
 
     // 连接视频管理器的信号
     Connections {
@@ -95,6 +104,20 @@ FluentWindow {
             // 检查视频URL是否有效
             if (!videoUrl || videoUrl === "") {
                 console.log("视频URL为空，不播放")
+                return
+            }
+
+            // 检查是否有待处理的下载请求
+            if (pendingDownload !== null && pendingDownload.title === title) {
+                console.log("开始下载视频:", title)
+                // 显示下载Flyout
+                downloadFlyout.openAt(pendingDownload.button, pendingDownload.videoId, title, videoUrl)
+                // 开始下载
+                var downloadId = downloadManager.startDownload(videoUrl, title, pendingDownload.videoId)
+                downloadFlyout.setDownloadId(downloadId)
+                downloadFlyout.setStatus("downloading")
+                // 清空待下载状态
+                pendingDownload = null
                 return
             }
 
@@ -148,6 +171,54 @@ FluentWindow {
             if (videoManager) {
                 videoManager.showSystemNotification("ClassNEWS - 播放失败", errorMsg)
             }
+            // 如果有待下载任务，清空它
+            if (pendingDownload !== null) {
+                pendingDownload = null
+            }
+        }
+    }
+
+    // 连接下载管理器的信号
+    Connections {
+        target: downloadManager
+        function onDownload_progress(downloadId, downloaded, total, speed) {
+            if (downloadFlyout.downloadId === downloadId) {
+                var progress = total > 0 ? Math.round((downloaded / total) * 100) : 0
+                var speedStr = downloadManager.formatSpeed(speed)
+                downloadFlyout.updateProgress(progress, speedStr, total)
+            }
+        }
+        function onDownload_completed(downloadId, filePath) {
+            if (downloadFlyout.downloadId === downloadId) {
+                downloadFlyout.setStatus("completed")
+            }
+        }
+        function onDownload_error(downloadId, errorMsg) {
+            if (downloadFlyout.downloadId === downloadId) {
+                downloadFlyout.setStatus("error")
+            }
+        }
+        function onDownload_status_changed(downloadId, status) {
+            if (downloadFlyout.downloadId === downloadId) {
+                downloadFlyout.setStatus(status)
+            }
+        }
+    }
+
+    // 连接下载Flyout的信号
+    Connections {
+        target: downloadFlyout
+        function onStartDownload() {
+            console.log("开始下载:", downloadFlyout.videoTitle)
+            // 已经在onVideoParsed中处理了
+        }
+        function onCancelDownload() {
+            console.log("取消下载:", downloadFlyout.downloadId)
+            downloadManager.cancelDownload(downloadFlyout.downloadId)
+        }
+        function onOpenFolder() {
+            console.log("打开下载文件夹:", downloadFlyout.downloadId)
+            downloadManager.openDownloadFolder(downloadFlyout.downloadId)
         }
     }
 

@@ -769,6 +769,22 @@ Rectangle {
                                     onClicked: gridFlyout.close()
                                 },
                                 Button {
+                                    text: qsTr("下载")
+                                    onClicked: {
+                                        if (newsItem && newsItem.videoId) {
+                                            // 设置待下载状态
+                                            mainWindow.pendingDownload = {
+                                                videoId: newsItem.videoId,
+                                                title: newsItem.title,
+                                                button: this
+                                            }
+                                            // 解析视频获取URL
+                                            videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                        }
+                                        gridFlyout.close()
+                                    }
+                                },
+                                Button {
                                     text: qsTr("播放")
                                     highlighted: true
                                     onClicked: {

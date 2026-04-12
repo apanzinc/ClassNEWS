@@ -1,0 +1,17 @@
+{
+    "news_api": {
+        "base_url": "https://api.cntv.cn/NewVideo/getVideoListByColumn",
+        "timeout": 15,
+        "default_page_size": 50,
+        "params": {
+            "id": "TOPC1451558496100826",
+            "sort": "desc",
+            "mode": "2",
+            "serviceId": "tvcctv"
+        }
+    },
+    "video_parser": {
+        "base_url": "https://vdn.apps.cntv.cn/api/getHttpVideoInfo.do",
+        "timeout": 10
+    }
+}

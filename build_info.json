@@ -1,0 +1,21 @@
+{
+    "version": "v2.0.0",
+    "buildNumber": "3",
+    "gitCommit": "unknown",
+    "gitBranch": "unknown",
+    "releaseType": "Beta",
+    "buildDate": "2026-04-12",
+    "buildTime": "16:41:41",
+    "compiler": "Python 3.12.9",
+    "qtVersion": "6.x",
+    "platform": "Windows",
+    "architecture": "AMD64",
+    "appName": "ClassNEWS",
+    "appId": "apanzinc.ClassNEWS.App",
+    "copyright": "Copyright 2026 apanzinc",
+    "license": "AGPL-3.0",
+    "builder": {
+        "name": "apanzinc",
+        "email": "apanzinc@outlook.com"
+    }
+}

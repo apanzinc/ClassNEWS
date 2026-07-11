@@ -18,9 +18,6 @@ FluentWindow {
 
     // 设置窗口图标
     icon: Qt.resolvedUrl("../assets/video.png")
-    
-    // 确保窗口显示在任务栏，但避免双重标题栏
-    flags: Qt.Window | Qt.FramelessWindowHint
 
     // 添加一个虚拟导航项来确保 NavigationView 正确初始化
     navigationItems: [
@@ -83,7 +80,10 @@ FluentWindow {
 
     // 保存窗口正常状态的几何信息
     property var normalGeometry: ({x: 0, y: 0, width: 900, height: 600})
-
+    
+    // 保存原始边距（用于全屏时移除白边）
+    property int originalWindowDragArea: 0
+    
     // 断点续播相关
     property int resumePosition: 0
     property bool hasResumed: false
@@ -317,15 +317,21 @@ FluentWindow {
 
     // 内容区域
     Rectangle {
+        id: contentRect
         anchors.fill: parent
         color: "black"
-        radius: 8  // 添加圆角
+        radius: videoPlayerWindow.isFullscreen ? 0 : 8  // 全屏时移除圆角
         clip: true  // 裁剪内容到圆角区域
 
         // 视频输出
         VideoOutput {
             id: videoOutput
             anchors.fill: parent
+            // 全屏时微调位置，消除可能的白边
+            x: videoPlayerWindow.isFullscreen ? -1 : 0
+            y: videoPlayerWindow.isFullscreen ? -1 : 0
+            width: videoPlayerWindow.isFullscreen ? parent.width + 2 : parent.width
+            height: videoPlayerWindow.isFullscreen ? parent.height + 2 : parent.height
         }
 
         // 加载动画 - 视频缓冲时显示
@@ -333,7 +339,7 @@ FluentWindow {
             id: videoLoadingOverlay
             anchors.fill: parent
             color: "black"
-            radius: 8
+            radius: videoPlayerWindow.isFullscreen ? 0 : 8  // 全屏时移除圆角
             clip: true
             visible: showLoading
             z: 5
@@ -779,9 +785,6 @@ FluentWindow {
         }
     }
 
-    // 保存原始边距
-    property int originalWindowDragArea: 0
-
     function enterFullscreen() {
         // 保存当前几何信息和窗口状态
         normalGeometry = {
@@ -798,8 +801,12 @@ FluentWindow {
 
         // 隐藏标题栏
         videoPlayerWindow.titleBarHeight = 0
+        
+        // 进入全屏
         videoPlayerWindow.showFullScreen()
         videoPlayerWindow.isFullscreen = true
+        
+        console.log("进入全屏模式")
     }
 
     function exitFullscreen() {
@@ -820,6 +827,8 @@ FluentWindow {
             videoPlayerWindow.height = normalGeometry.height
         }
         videoPlayerWindow.isFullscreen = false
+        
+        console.log("退出全屏模式")
     }
 
     // 加载视频
@@ -828,7 +837,9 @@ FluentWindow {
         console.log("========== 加载视频 ==========")
         console.log("  title:", title)
         console.log("  source:", source)
-        console.log("  options.pid:", options.pid)
+        console.log("  options.id:", options.id)
+        console.log("  options.type:", options.type)
+        console.log("  options.url:", options.url)
         console.log("  options.fullscreen:", options.fullscreen)
         console.log("  options.volume:", options.volume)
         videoPlayerWindow.videoSource = source
@@ -838,10 +849,10 @@ FluentWindow {
         videoPlayerWindow.videoTitle = cleanTitle
         videoPlayerWindow.title = cleanTitle
 
-        // 设置视频 ID（用于断点续播）- 优先使用 options.pid，否则使用标题作为 ID
-        var videoId = options.pid || ""
+        // 设置视频 ID（用于断点续播）- 优先使用 options.id，否则使用标题作为 ID
+        var videoId = options.id || ""
         if (!videoId && title) {
-            // 如果没有 pid，使用标题的哈希值作为 ID（简化处理，直接使用标题）
+            // 如果没有 id，使用标题的哈希值作为 ID（简化处理，直接使用标题）
             videoId = title.replace(/\s+/g, "_")  // 用标题替换空格
         }
         videoPlayerWindow.videoId = videoId
@@ -875,20 +886,28 @@ FluentWindow {
             }
         }
 
-        // 应用默认进度（跳过片头）
-        if (configManager && configManager.defaultProgress > 0) {
+        // 应用进度设置（跳过片头）- 优先级：协议参数 > 系统设置
+        if (options.time !== undefined) {
+            // 协议指定了时间，使用协议的值
+            console.log("使用协议指定的开始时间:", options.time, "秒")
+        } else if (configManager && configManager.defaultProgress > 0) {
+            // 协议未指定，使用系统设置的默认进度
             options.time = configManager.defaultProgress
             console.log("使用默认进度（跳过片头）:", configManager.defaultProgress, "秒")
         }
 
-        // 应用全屏设置（仅当协议调用时传入 fullscreen 参数才生效）
+        // 应用全屏设置 - 优先级：协议参数 > 系统设置
         var shouldEnterFullscreen = false
-        console.log("检查全屏参数：options.fullscreen =", options.fullscreen, "类型:", typeof options.fullscreen)
-        if (options.fullscreen !== undefined && options.fullscreen === true) {
+        if (options.fullscreen !== undefined) {
+            // 协议指定了全屏参数，使用协议的值
+            shouldEnterFullscreen = (options.fullscreen === true)
+            console.log("使用协议指定的全屏设置:", options.fullscreen, "结果:", shouldEnterFullscreen)
+        } else if (configManager && configManager.fullscreenPlayback) {
+            // 协议未指定，使用系统设置的默认值
             shouldEnterFullscreen = true
-            console.log("✅ 协议调用：全屏模式已启用")
+            console.log("使用系统设置的全屏模式")
         } else {
-            console.log("❌ 全屏模式未启用，options.fullscreen =", options.fullscreen)
+            console.log("全屏模式未启用")
         }
 
         videoPlayer.stop()

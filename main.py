@@ -5,15 +5,24 @@ import socket
 import platform
 import os
 import io
+import threading
 from pathlib import Path
 from datetime import datetime
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PySide6.QtGui import QIcon, QAction
 from PySide6.QtCore import Qt, QTimer, QObject, Signal, Slot, Property, QThread, QEvent, qInstallMessageHandler, QtMsgType, QMessageLogContext
-import ctypes
+
+# 平台检测
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
+
+# 条件导入 ctypes（仅在 Windows 上需要）
+if IS_WINDOWS:
+    import ctypes
 
 # 设置环境变量，解决 Windows 控制台编码问题
-if sys.platform == "win32":
+if IS_WINDOWS:
     os.environ['PYTHONIOENCODING'] = 'utf-8'
     
     # 强制设置标准输出和标准错误输出的编码为 UTF-8 (Python 3.7+)
@@ -37,6 +46,10 @@ if sys.platform == "win32":
         kernel32.SetConsoleCP(65001)
     except OSError as e:
         print(f"控制台编码设置失败：{e}")
+elif IS_LINUX or IS_MACOS:
+    # Linux/macOS 设置
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    print(f"检测到 {sys.platform} 系统，使用兼容模式")
 
 # 先打印启动横幅（ASCII 艺术字）
 from logger import print_startup_banner
@@ -89,21 +102,91 @@ def setup_rinui_path():
                 return
         print(f"警告: 未找到 RinUI 目录，尝试路径: {possible_paths}")
 
-# 先应用 RinUI 配置补丁，修复 JSON 解析错误
-try:
-    import patch_rinui_config
-    print("[成功] RinUI 配置补丁已加载")
-except Exception as e:
-    print(f"[警告] RinUI 配置补丁加载失败：{e}，使用原始配置")
+# RinUI 现在自带空文件/损坏 JSON 的容错处理，不再需要预删除配置文件
 
 # 先导入 RinUI 的 config 模块并设置路径
 import RinUI.core.config
 setup_rinui_path()
 
 from RinUI import RinUIWindow  # 使用 RinUIWindow 来正确初始化
-from news_api import fetch_news
 from logger import init_logger, get_logger, LogCategory
 from download_manager import DownloadManager
+
+# ===== 插件系统初始化 =====
+# 使用 core/__init__.py 中的全局单例，确保 API 与主程序共享同一实例
+from core import get_plugin_manager as _get_plugin_manager
+
+
+def get_plugin_manager() -> "PluginManager":
+    """获取 PluginManager 全局单例（在 QApplication 创建后才能调用）"""
+    return _get_plugin_manager()
+
+
+def _fetch_news_via_plugin(plugin_id: int = None, max_count: int = 100):
+    """通过插件获取新闻，返回与旧格式兼容的字典列表
+    
+    Args:
+        plugin_id: 指定插件ID获取新闻，为None时从所有启用的插件获取
+        max_count: 每个插件获取的最大新闻数
+    """
+    import asyncio
+    
+    pm = get_plugin_manager()
+    
+    # 如果指定了插件ID，只从该插件获取
+    if plugin_id is not None:
+        plugins = [pm.get_plugin(plugin_id)]
+    else:
+        # 获取所有启用的插件
+        plugins = pm.get_all_plugins(enabled_only=True)
+    
+    if not plugins or all(p is None for p in plugins):
+        print("[插件系统] 没有可用的启用插件")
+        return []
+    
+    all_news_list = []
+    
+    for plugin in plugins:
+        if plugin is None or not plugin.info.enabled:
+            continue
+            
+        try:
+            print(f"[插件系统] 从插件 {plugin.name} (ID: {plugin.id}) 获取新闻...")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(
+                    plugin.fetch_news(count=max_count)
+                )
+            finally:
+                loop.close()
+            
+            if result is None or not result.items:
+                print(f"[插件系统] 插件 {plugin.name} 返回空数据")
+                continue
+            
+            # 转换为 QML 层使用的字典格式
+            # 注意：QML 层已改为使用 id 而不是 videoId，这里保持兼容
+            for item in result.items:
+                all_news_list.append({
+                    "title":         item.title,
+                    "summary":       item.summary or "",
+                    "image":         item.image_url or "",
+                    "url":           item.url or "",
+                    "time":          item.publish_time or "",
+                    "id":            item.id,
+                    "isFullVersion": item.is_full_version,
+                    "sourceName":    item.source_name or "",
+                })
+            
+            print(f"[插件系统] 插件 {plugin.name} 返回 {len(result.items)} 条新闻")
+            
+        except Exception as e:
+            print(f"[插件系统] 从插件 {plugin.name} 获取新闻失败: {e}")
+            continue
+    
+    print(f"[插件系统] 总共获取到 {len(all_news_list)} 条新闻（来自 {len([p for p in plugins if p is not None])} 个插件）")
+    return all_news_list
 
 r"""
                             _ooOoo_
@@ -316,24 +399,49 @@ def get_system_info_sync():
 class NewsWorker(QThread):
     """在后台线程中获取新闻"""
     news_fetched = Signal(list)
+    fetch_error = Signal(str, str)  # 信号：错误标题，错误消息
     
     def run(self):
         try:
-            news = fetch_news()
+            news = _fetch_news_via_plugin()
             self.news_fetched.emit(news)
         except Exception as e:
-            print(f"获取新闻失败: {e}")
+            error_msg = f"获取新闻失败：{e}"
+            print(error_msg)
+            # 发送错误信号，让 NewsManager 处理
+            self.fetch_error.emit("API 请求失败", str(e))
             self.news_fetched.emit([])
 
 
 class NewsManager(QObject):
     """新闻管理器，用于在 Python 和 QML 之间传递新闻数据"""
     newsChanged = Signal()
+    fetchError = Signal(str, str)  # 信号：错误标题，错误消息
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._news = []
         self._worker = None
+        self._video_manager = None  # 引用 videoManager，用于发送智能通知
+        # 自动刷新定时器
+        self._auto_refresh_timer = QTimer(self)
+        self._auto_refresh_timer.timeout.connect(self.refreshNews)
+        self._auto_refresh_interval_minutes = 15  # 默认15分钟
+    
+    def setVideoManager(self, video_manager):
+        """设置 videoManager 引用"""
+        self._video_manager = video_manager
+
+    @Slot(int)
+    def setAutoRefreshInterval(self, minutes):
+        """设置自动刷新间隔（分钟），0 表示关闭自动刷新"""
+        self._auto_refresh_interval_minutes = minutes
+        if minutes <= 0:
+            self._auto_refresh_timer.stop()
+            print("自动刷新已关闭")
+        else:
+            self._auto_refresh_timer.start(minutes * 60 * 1000)
+            print(f"自动刷新间隔已设置为 {minutes} 分钟")
 
     @Property(list, notify=newsChanged)
     def news(self):
@@ -351,7 +459,18 @@ class NewsManager(QObject):
         print("正在获取最新新闻...")
         self._worker = NewsWorker()
         self._worker.news_fetched.connect(self._on_news_fetched)
+        # 连接错误信号
+        self._worker.fetch_error.connect(self._on_fetch_error)
         self._worker.start()
+    
+    def _on_fetch_error(self, title, message):
+        """新闻获取错误处理"""
+        print(f"新闻获取错误：{title} - {message}")
+        # 如果 videoManager 存在，使用智能通知
+        if self._video_manager:
+            self._video_manager.showSmartNotification(title, message)
+        # 同时发送信号给 QML 层
+        self.fetchError.emit(title, message)
 
     @Slot()
     def shuffleNews(self):
@@ -368,29 +487,7 @@ class NewsManager(QObject):
             self.news = news_list
             print(f"新闻已打乱顺序，共 {len(news_list)} 条（完整版 {len(full_version_news)} 条）")
 
-    @Slot(result=dict)
-    def getTodayFullVersionNews(self):
-        """获取当天的完整版新闻（如朝闻天下）"""
-        if not self._news:
-            print("新闻列表为空，无法获取完整版新闻")
-            return {}
-        
-        # 查找完整版新闻
-        full_version_news = [n for n in self._news if n.get('isFullVersion', False)]
-        if full_version_news:
-            # 返回第一个完整版新闻（通常是最新的）
-            news = full_version_news[0]
-            print(f"获取到当天完整版新闻: {news.get('title', 'Unknown')}")
-            # 使用 videoId 作为 pid（因为新闻数据中使用的是 videoId 字段）
-            video_id = news.get('videoId', '')
-            return {
-                'pid': video_id,
-                'title': news.get('title', '完整版新闻'),
-                'isFullVersion': True
-            }
-        else:
-            print("未找到完整版新闻")
-            return {}
+
 
     def _on_news_fetched(self, news):
         """新闻获取完成回调"""
@@ -414,14 +511,35 @@ class NewsManager(QObject):
             self._worker = None
 
 
+class NavigationHelper(QObject):
+    """导航助手 — 通过信号槽跨 QML 文件触发导航"""
+    navigateToPluginsRequested = Signal()
+
+    @Slot()
+    def goToPlugins(self):
+        """由任意 QML 页面调用，触发导航到插件页面"""
+        self.navigateToPluginsRequested.emit()
+
+
 class ConfigManager(QObject):
     """配置管理器，用于保存和加载应用设置"""
     configChanged = Signal()
+    saveFinished = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self._config_file = Path(__file__).parent / "config.json"
+        self._config_lock = threading.Lock()
         self._config = self._load_config()
+
+        # 通过短延迟合并频繁写入，避免设置页首次加载时阻塞 UI
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(150)
+        self._save_timer.timeout.connect(self._flush_save_async)
+        self.saveFinished.connect(self._handle_save_finished)
+        self._save_in_progress = False
+        self._save_pending = False
     
     def _load_config(self):
         """加载配置文件"""
@@ -432,14 +550,55 @@ class ConfigManager(QObject):
             except Exception as e:
                 print(f"加载配置文件失败: {e}")
         return {}
-    
-    def _save_config(self):
-        """保存配置文件"""
+
+    def _save_config_sync(self, snapshot):
+        """同步写入配置（仅后台线程调用）"""
         try:
             with open(self._config_file, 'w', encoding='utf-8') as f:
-                json.dump(self._config, f, ensure_ascii=False, indent=2)
+                json.dump(snapshot, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"保存配置文件失败: {e}")
+
+    def _flush_save_async(self):
+        """将配置写盘任务放到后台线程，避免阻塞主线程"""
+        if self._save_in_progress:
+            self._save_pending = True
+            return
+
+        with self._config_lock:
+            snapshot = dict(self._config)
+
+        self._save_in_progress = True
+
+        def worker(data):
+            try:
+                self._save_config_sync(data)
+            finally:
+                self.saveFinished.emit()
+
+        thread = threading.Thread(target=worker, args=(snapshot,), daemon=True)
+        thread.start()
+
+    @Slot()
+    def _handle_save_finished(self):
+        self._save_in_progress = False
+        if self._save_pending:
+            self._save_pending = False
+            self._save_timer.start()
+
+    def _save_config(self):
+        """触发异步保存（带合并）"""
+        self._save_timer.start()
+
+    def _set_config_value(self, key, value):
+        """仅在值变化时更新配置并触发保存"""
+        with self._config_lock:
+            old = self._config.get(key)
+            if old == value:
+                return False
+            self._config[key] = value
+        self._save_config()
+        return True
     
     @Property(bool)
     def useInternalPlayer(self):
@@ -447,9 +606,8 @@ class ConfigManager(QObject):
     
     @useInternalPlayer.setter
     def useInternalPlayer(self, value):
-        self._config["use_internal_player"] = value
-        self._save_config()
-        self.configChanged.emit()
+        if self._set_config_value("use_internal_player", value):
+            self.configChanged.emit()
 
     @Slot(str, result=int)
     def getVideoProgress(self, video_id):
@@ -460,17 +618,22 @@ class ConfigManager(QObject):
     @Slot(str, int)
     def saveVideoProgress(self, video_id, position):
         """保存视频播放位置（毫秒）"""
-        if "video_progress" not in self._config:
-            self._config["video_progress"] = {}
-        self._config["video_progress"][video_id] = position
+        with self._config_lock:
+            progress_data = self._config.setdefault("video_progress", {})
+            if progress_data.get(video_id) == position:
+                return
+            progress_data[video_id] = position
         self._save_config()
 
     @Slot(str)
     def clearVideoProgress(self, video_id):
         """清除指定视频的播放进度"""
-        if "video_progress" in self._config and video_id in self._config["video_progress"]:
-            del self._config["video_progress"][video_id]
-            self._save_config()
+        with self._config_lock:
+            progress_data = self._config.get("video_progress", {})
+            if video_id not in progress_data:
+                return
+            del progress_data[video_id]
+        self._save_config()
 
     @Slot(result=bool)
     def getAutoReplay(self):
@@ -480,9 +643,8 @@ class ConfigManager(QObject):
     @Slot(bool)
     def setAutoReplay(self, value):
         """设置自动重播"""
-        self._config["auto_replay"] = value
-        self._save_config()
-        self.configChanged.emit()
+        if self._set_config_value("auto_replay", value):
+            self.configChanged.emit()
 
     @Property(bool)
     def showNotificationWindow(self):
@@ -491,9 +653,8 @@ class ConfigManager(QObject):
     
     @showNotificationWindow.setter
     def showNotificationWindow(self, value):
-        self._config["show_notification_window"] = value
-        self._save_config()
-        self.configChanged.emit()
+        if self._set_config_value("show_notification_window", value):
+            self.configChanged.emit()
 
     @Property(int)
     def notificationCountdownSeconds(self):
@@ -502,9 +663,9 @@ class ConfigManager(QObject):
     
     @notificationCountdownSeconds.setter
     def notificationCountdownSeconds(self, value):
-        self._config["notification_countdown_seconds"] = max(1, min(60, value))
-        self._save_config()
-        self.configChanged.emit()
+        normalized = max(1, min(60, value))
+        if self._set_config_value("notification_countdown_seconds", normalized):
+            self.configChanged.emit()
 
     @Property(int)
     def defaultVolume(self):
@@ -513,9 +674,9 @@ class ConfigManager(QObject):
     
     @defaultVolume.setter
     def defaultVolume(self, value):
-        self._config["default_volume"] = max(0, min(100, value))
-        self._save_config()
-        self.configChanged.emit()
+        normalized = max(0, min(100, value))
+        if self._set_config_value("default_volume", normalized):
+            self.configChanged.emit()
 
     @Property(float)
     def defaultPlaybackRate(self):
@@ -524,9 +685,8 @@ class ConfigManager(QObject):
     
     @defaultPlaybackRate.setter
     def defaultPlaybackRate(self, value):
-        self._config["default_playback_rate"] = value
-        self._save_config()
-        self.configChanged.emit()
+        if self._set_config_value("default_playback_rate", value):
+            self.configChanged.emit()
 
     @Property(int)
     def defaultProgress(self):
@@ -535,9 +695,9 @@ class ConfigManager(QObject):
     
     @defaultProgress.setter
     def defaultProgress(self, value):
-        self._config["default_progress"] = max(0, value)
-        self._save_config()
-        self.configChanged.emit()
+        normalized = max(0, value)
+        if self._set_config_value("default_progress", normalized):
+            self.configChanged.emit()
 
     @Property(bool)
     def autoContinue(self):
@@ -546,9 +706,8 @@ class ConfigManager(QObject):
     
     @autoContinue.setter
     def autoContinue(self, value):
-        self._config["auto_continue"] = value
-        self._save_config()
-        self.configChanged.emit()
+        if self._set_config_value("auto_continue", value):
+            self.configChanged.emit()
 
     @Property(bool)
     def autoStart(self):
@@ -557,11 +716,26 @@ class ConfigManager(QObject):
     
     @autoStart.setter
     def autoStart(self, value):
-        self._config["auto_start"] = value
-        self._save_config()
+        if not self._set_config_value("auto_start", value):
+            return
         self.configChanged.emit()
-        # 设置/取消 Windows 开机启动
-        self._set_windows_startup(value)
+        # 设置/取消开机启动（仅 Windows 支持）
+        if IS_WINDOWS:
+            self._set_windows_startup(value)
+        else:
+            print(f"开机启动功能仅在 Windows 上支持，当前平台: {sys.platform}")
+
+    @Property(int)
+    def autoRefreshInterval(self):
+        """自动刷新新闻间隔（分钟），0 表示关闭自动刷新"""
+        return self._config.get("auto_refresh_interval", 15)
+    
+    @autoRefreshInterval.setter
+    def autoRefreshInterval(self, value):
+        """设置自动刷新间隔，0 表示关闭"""
+        normalized = max(0, value)
+        if self._set_config_value("auto_refresh_interval", normalized):
+            self.configChanged.emit()
 
     @Property(bool)
     def fullscreenPlayback(self):
@@ -570,9 +744,8 @@ class ConfigManager(QObject):
     
     @fullscreenPlayback.setter
     def fullscreenPlayback(self, value):
-        self._config["fullscreen_playback"] = value
-        self._save_config()
-        self.configChanged.emit()
+        if self._set_config_value("fullscreen_playback", value):
+            self.configChanged.emit()
     
     def _set_windows_startup(self, enable):
         """设置 Windows 开机启动"""
@@ -738,16 +911,17 @@ class ConfigManager(QObject):
 
 class VideoManager(QObject):
     """视频管理器，用于解析和播放视频"""
-    videoParsed = Signal(str, str, dict)  # 信号：视频URL, 视频标题, 播放选项
+    videoParsed = Signal(str, str, dict)  # 信号：视频 URL, 视频标题，播放选项
     parseError = Signal(str)  # 信号：错误信息
+    requestSystemNotification = Signal(str, str)  # 信号：请求系统通知（标题，消息）
 
     def __init__(self, config_manager=None, parent=None):
         super().__init__(parent)
-        self._video_worker = None
         self._program_worker = None
         self._config_manager = config_manager
         self._toast_notifier = None
         self._notification = None
+        self._main_window = None  # 主窗口引用
         # 初始化 Windows 系统通知
         self._init_toast_notifier()
 
@@ -773,12 +947,46 @@ class VideoManager(QObject):
                     app_name="ClassNEWS",
                     timeout=5
                 )
-                print(f"系统通知已发送: {title} - {message}")
+                print(f"系统通知已发送：{title} - {message}")
             else:
-                print(f"系统通知不可用: {title} - {message}")
+                print(f"系统通知不可用：{title} - {message}")
         except Exception as e:
-            print(f"显示系统通知失败: {e}")
+            print(f"显示系统通知失败：{e}")
         self._pending_options = {}  # 存储待处理的播放选项
+
+    @Slot(str, str)
+    def showSmartNotification(self, title, message):
+        """智能通知：根据窗口焦点决定使用系统通知还是应用内提示"""
+        # 检查主窗口是否在前台
+        is_active = self._isMainWindowActive()
+        
+        if not is_active:
+            # 窗口不在前台，使用系统通知
+            print(f"窗口不在前台，使用系统通知：{title} - {message}")
+            self.showSystemNotification(title, message)
+        else:
+            # 窗口在前台，通过信号让 QML 显示应用内提示
+            print(f"窗口在前台，发送应用内错误信号：{title}")
+            self.parseError.emit(title + ": " + message)
+    
+    def _isMainWindowActive(self):
+        """检查主窗口是否处于活动状态"""
+        try:
+            if self._main_window:
+                # 检查窗口是否可见
+                if not self._main_window.isVisible():
+                    return False
+                # 检查窗口是否激活
+                return self._main_window.isActiveWindow()
+            return False
+        except Exception as e:
+            print(f"检查窗口状态失败：{e}")
+            return False
+    
+    def setMainWindow(self, window):
+        """设置主窗口引用"""
+        self._main_window = window
+        print("VideoManager: 主窗口引用已设置")
 
     @Property(bool)
     def useInternalPlayer(self):
@@ -793,19 +1001,55 @@ class VideoManager(QObject):
 
     @Slot(str, str)
     def parseVideo(self, pid, title):
-        """解析视频（兼容旧版本，无选项）"""
-        self.parseVideoWithOptions(pid, title, {})
+        """解析视频（兼容旧版本，无选项）- 已弃用，请使用 playWithOptions"""
+        self.playWithOptions(pid, title, {})
 
     @Slot(str, str, dict)
     def parseVideoWithOptions(self, pid, title, options=None):
-        """解析视频（带播放选项）"""
+        """解析视频（带播放选项）- 已弃用，请使用 playWithOptions"""
+        self.playWithOptions(pid, title, options)
+
+    @Slot(str, str, dict)
+    def playWithOptions(self, media_id, title, options=None):
+        """
+        播放媒体（新架构）
+        
+        直接播放插件返回的 url，不再解析 pid。
+        options 中应包含：
+        - id: 媒体ID（可选，默认使用 media_id 参数）
+        - url: 媒体地址（必需）
+        - type: 内容类型 video/audio/text（可选，默认 video）
+        - 其他播放控制参数：rate, time, volume, fullscreen
+        """
         options = options or {}
-        print(f"正在解析视频: {pid}, 标题: {title}, 选项: {options}")
+        # 优先使用 options 中的 id，否则使用传入的 media_id
+        media_id = options.get("id") or media_id
+        url = options.get("url", "")
+        media_type = options.get("type", "video")
+        
+        print(f"播放媒体: id={media_id}, title={title}, type={media_type}, url={url[:50] if url else 'None'}...")
+        
+        if not url:
+            print("错误：缺少播放地址 url")
+            self.parseError.emit("缺少播放地址")
+            return
+        
         self._pending_options = options
-        self._video_worker = VideoParseWorker(pid, title)
-        self._video_worker.video_parsed.connect(self._on_video_parsed)
-        self._video_worker.parse_error.connect(self._on_parse_error)
-        self._video_worker.start()
+        
+        # 根据类型分发到不同播放器
+        if media_type == "video":
+            self.videoParsed.emit(url, title, options)
+        elif media_type == "audio":
+            # TODO: 音频播放器
+            print("音频播放暂未实现，使用视频播放器")
+            self.videoParsed.emit(url, title, options)
+        elif media_type == "text":
+            # TODO: 文本/Markdown 展示
+            print("文本展示暂未实现")
+            self.parseError.emit("文本展示暂未实现")
+        else:
+            print(f"未知的媒体类型: {media_type}")
+            self.parseError.emit(f"不支持的媒体类型: {media_type}")
 
     @Slot(str)
     def playProgramByName(self, program_name):
@@ -816,23 +1060,7 @@ class VideoManager(QObject):
         self._program_worker.parse_error.connect(self._on_program_parse_error)
         self._program_worker.start()
 
-    def _on_video_parsed(self, video_url, title):
-        """视频解析完成"""
-        print(f"视频解析完成: {title}, 选项: {self._pending_options}")
-        self.videoParsed.emit(video_url, title, self._pending_options)
-        self._pending_options = {}
-        if self._video_worker:
-            self._video_worker.deleteLater()
-            self._video_worker = None
 
-    def _on_parse_error(self, error_msg):
-        """视频解析错误"""
-        print(f"视频解析失败: {error_msg}")
-        self.parseError.emit(error_msg)
-        self._pending_options = {}
-        if self._video_worker:
-            self._video_worker.deleteLater()
-            self._video_worker = None
 
     def _on_program_video_parsed(self, video_url, title):
         """节目搜索并解析完成"""
@@ -1049,47 +1277,6 @@ class VideoManager(QObject):
             return False
 
 
-class VideoParseWorker(QThread):
-    """在后台线程中解析视频"""
-    video_parsed = Signal(str, str)  # video_url, title
-    parse_error = Signal(str)  # error message
-
-    def __init__(self, pid, title, parent=None):
-        super().__init__(parent)
-        self.pid = pid
-        self.title = title
-
-    def run(self):
-        try:
-            from cctv_video import get_cctv_video, upgrade_hls_quality
-            import requests
-
-            result = get_cctv_video(self.pid)
-
-            if result["success"]:
-                hls_url = result["hls_url"]
-
-                # 尝试升级高清
-                hd_url = upgrade_hls_quality(hls_url, "4000")
-
-                # 验证高清是否可用
-                try:
-                    r = requests.head(hd_url, timeout=5)
-                    if r.status_code == 200:
-                        video_url = hd_url
-                    else:
-                        video_url = hls_url
-                except:
-                    video_url = hls_url
-
-                self.video_parsed.emit(video_url, self.title)
-            else:
-                self.parse_error.emit(result.get("error", "未知错误"))
-        except Exception as e:
-            print(f"解析视频失败: {e}")
-            self.parse_error.emit(str(e))
-
-
 class ProgramSearchWorker(QThread):
     """在后台线程中搜索节目并解析视频"""
     video_parsed = Signal(str, str)  # video_url, title
@@ -1166,6 +1353,8 @@ class WindowManager(QObject):
 
     def _set_window_round_corners(self, window):
         """设置窗口圆角（Windows 11）"""
+        if not IS_WINDOWS:
+            return
         try:
             import ctypes
             from ctypes import wintypes
@@ -1192,6 +1381,8 @@ class WindowManager(QObject):
 
     def _set_window_icon(self, window):
         """设置窗口图标（使用 Windows API）"""
+        if not IS_WINDOWS:
+            return
         try:
             from pathlib import Path
             import ctypes
@@ -1233,6 +1424,8 @@ class WindowManager(QObject):
 
 def set_windows_app_id(app_id: str):
     """设置 Windows 应用程序 ID，用于任务栏图标显示"""
+    if not IS_WINDOWS:
+        return
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
@@ -1243,6 +1436,8 @@ def set_windows_app_id(app_id: str):
 
 def refresh_taskbar_icon():
     """刷新 Windows 任务栏图标"""
+    if not IS_WINDOWS:
+        return
     try:
         import ctypes
         HWND_BROADCAST = 0xFFFF
@@ -1259,6 +1454,8 @@ def refresh_taskbar_icon():
 
 def set_taskbar_icon(hwnd: int, icon_path: str):
     """直接设置 Windows 任务栏图标"""
+    if not IS_WINDOWS:
+        return False
     try:
         import ctypes
         from ctypes import wintypes
@@ -1314,6 +1511,9 @@ class ProtocolManager(QObject):
             else:
                 # 使用 Python 脚本方式
                 self._exe_path = str(Path(__file__).parent / "main.py")
+        
+        # 本地服务器状态
+        self._local_server_running = False
     
     def _get_app_name(self):
         """获取应用程序显示名称"""
@@ -1321,7 +1521,10 @@ class ProtocolManager(QObject):
     
     @Slot(result=bool)
     def registerProtocol(self):
-        """注册 classnews:// 协议到 Windows 注册表"""
+        """注册 classnews:// 协议到系统注册表"""
+        if not IS_WINDOWS:
+            print(f"协议注册功能仅在 Windows 上支持，当前平台: {sys.platform}")
+            return False
         try:
             import winreg
             
@@ -1367,7 +1570,10 @@ class ProtocolManager(QObject):
     
     @Slot(result=bool)
     def unregisterProtocol(self):
-        """从 Windows 注册表中移除 classnews:// 协议"""
+        """从系统注册表中移除 classnews:// 协议"""
+        if not IS_WINDOWS:
+            print(f"协议注销功能仅在 Windows 上支持，当前平台: {sys.platform}")
+            return False
         try:
             import winreg
             
@@ -1418,12 +1624,13 @@ class ProtocolManager(QObject):
         """解析协议 URL，提取参数
 
         支持的参数：
-        - pid: 视频 ID（必需）
+        - plugin: 插件 ID（必需）
+        - action: 动作类型（可选，默认 play）
         - title: 视频标题（可选）
-        - rate: 播放倍率，如 1.0, 1.5, 2.0（可选，默认 1.0）
-        - volume: 音量，0-100（可选，默认 50）
-        - time: 开始时间（秒）（可选，默认 0）
-        - fullscreen: 是否全屏播放，true/false（可选，默认 false）
+        - rate: 播放倍率，如 1.0, 1.5, 2.0（可选）
+        - volume: 音量，0-100（可选）
+        - time: 开始时间（秒）（可选）
+        - fullscreen: 是否全屏播放，true/false（可选）
         """
         from urllib.parse import urlparse, parse_qs
 
@@ -1459,19 +1666,40 @@ class ProtocolManager(QObject):
             # 提取参数
             result = {
                 "action": action,
-                "pid": params.get("pid", [""])[0],
+                "plugin": int(params.get("plugin", ["0"])[0]) if params.get("plugin") else None,
                 "title": params.get("title", [""])[0] or "视频",
-                # 可选参数
-                "rate": float(params.get("rate", ["1.0"])[0]) if params.get("rate") else 1.0,
-                "volume": int(params.get("volume", ["50"])[0]) if params.get("volume") else 50,
-                "time": int(params.get("time", ["0"])[0]) if params.get("time") else 0,
-                "fullscreen": params.get("fullscreen", ["false"])[0].lower() == "true",
             }
-
-            # 验证参数范围
-            result["rate"] = max(0.5, min(3.0, result["rate"]))  # 限制倍率 0.5-3.0
-            result["volume"] = max(0, min(100, result["volume"]))  # 限制音量 0-100
-            result["time"] = max(0, result["time"])  # 时间不能为负
+            
+            # 透传其他所有参数给插件
+            for key, value_list in params.items():
+                if key not in ["plugin", "action", "title"] and value_list:
+                    # 如果只有一个值，直接取；否则取列表
+                    if len(value_list) == 1:
+                        result[key] = value_list[0]
+                    else:
+                        result[key] = value_list
+            
+            # 处理数值类型参数
+            if "rate" in result:
+                try:
+                    result["rate"] = float(result["rate"])
+                    result["rate"] = max(0.5, min(3.0, result["rate"]))
+                except:
+                    del result["rate"]
+            if "time" in result:
+                try:
+                    result["time"] = int(result["time"])
+                    result["time"] = max(0, result["time"])
+                except:
+                    del result["time"]
+            if "volume" in result:
+                try:
+                    result["volume"] = int(result["volume"])
+                    result["volume"] = max(0, min(100, result["volume"]))
+                except:
+                    del result["volume"]
+            if "fullscreen" in result:
+                result["fullscreen"] = str(result["fullscreen"]).lower() == "true"
 
             return result
         except Exception as e:
@@ -1512,67 +1740,112 @@ class ProtocolManager(QObject):
             return True
         
         elif action == "play":
-            # 播放视频
-            pid = params.get("pid")
+            # 播放视频 - 新架构：通过 plugin 参数路由到对应插件
+            plugin_id = params.get("plugin")
             title = params.get("title", "视频")
 
-            if not pid:
-                print("协议 URL 缺少 pid 参数")
+            if not plugin_id:
+                print("协议 URL 缺少 plugin 参数（插件ID）")
                 return False
 
-            # 提取可选参数
-            options = {
-                "pid": pid,
-                "rate": params.get("rate", 1.0),
-                "volume": params.get("volume", 50),
-                "time": params.get("time", 0),
-                "fullscreen": params.get("fullscreen", False)  # 已经是布尔值
-            }
-
-            # 打印调试信息
-            print(f"协议参数解析结果：fullscreen={options['fullscreen']}, 类型={type(options['fullscreen'])}")
-
-            # 如果协议 URL 中没有指定 fullscreen 参数（值为 None 或 False），检查配置管理器的设置
-            if params.get("fullscreen") is None and self._config_manager and self._config_manager.fullscreenPlayback:
+            # 提取播放控制参数（软件自己处理）
+            options = {}
+            if "rate" in params:
+                options["rate"] = params.get("rate")
+            if "time" in params:
+                options["time"] = params.get("time")
+            if "volume" in params:
+                options["volume"] = params.get("volume")
+            if "fullscreen" in params:
+                options["fullscreen"] = params.get("fullscreen")
+            # 全屏特殊处理：如果协议未指定但配置管理器启用了全屏，则添加
+            if "fullscreen" not in options and self._config_manager and self._config_manager.fullscreenPlayback:
                 options["fullscreen"] = True
                 print("配置管理器：协议调用时全屏播放已启用")
-                print(f"最终 options: {options}")
 
-            # 如果 pid 是 "today" 或 "latest"，先获取当天的完整版新闻
-            if pid.lower() in ["today", "latest", "zhaowentianxia", "朝闻天下"]:
-                print(f"检测到特殊 pid: {pid}，尝试获取当天完整版新闻")
-                if self._news_manager:
-                    today_news = self._news_manager.getTodayFullVersionNews()
-                    # 检查 today_news 是否是有效的字典且包含非空的 pid
-                    if today_news and isinstance(today_news, dict):
-                        news_pid = today_news.get('pid')
-                        if news_pid:
-                            pid = news_pid
-                            title = today_news.get('title', title)
-                            options['pid'] = pid  # 更新options中的pid
-                            print(f"获取到当天新闻: {title} ({pid})")
-                            # 发送信号给QML显示确认窗口，让用户确认是否播放
-                            self.protocolNewsReady.emit(pid, title, options)
-                            return True
-                        else:
-                            print(f"获取到的新闻没有有效的 pid: {today_news}")
-                            return False
-                    else:
-                        print(f"未获取到当天新闻或返回格式错误: {today_news}")
-                        return False
-                else:
-                    print("NewsManager 未初始化，无法获取当天新闻")
+            # 路由到对应插件
+            print(f"路由协议请求到插件 {plugin_id}, action={action}")
+            try:
+                import asyncio
+                from core import get_plugin_manager
+                
+                pm = get_plugin_manager()
+                plugin = pm.get_plugin(plugin_id)
+                
+                if not plugin:
+                    print(f"插件 {plugin_id} 不存在或已禁用")
                     return False
-            else:
-                # 普通pid，直接触发播放（需要获取新闻标题）
-                print(f"处理协议请求: pid={pid}, title={title}, options={options}")
-                # 触发信号，让 QML 显示提示对话框
-                self.protocolTriggered.emit(pid, title, options)
+                
+                # 构建透传给插件的参数（去掉软件自己处理的参数）
+                plugin_params = {k: v for k, v in params.items() 
+                                if k not in ["plugin", "action", "title", "rate", "time", "volume", "fullscreen"]}
+                
+                # 异步调用插件的 handle_protocol_request
+                # 使用 asyncio.run() 处理事件循环，避免与 Qt 事件循环冲突
+                try:
+                    news_item = asyncio.run(plugin.handle_protocol_request(action, plugin_params))
+                except RuntimeError as e:
+                    # 如果已经在事件循环中，使用现有循环
+                    if "cannot be called from a running event loop" in str(e):
+                        import nest_asyncio
+                        nest_asyncio.apply()
+                        news_item = asyncio.run(plugin.handle_protocol_request(action, plugin_params))
+                    else:
+                        raise
+                
+                if not news_item:
+                    print(f"插件 {plugin_id} 返回空数据")
+                    return False
+                
+                # 更新标题
+                title = news_item.title or title
+                
+                # 将插件返回的数据加入 options
+                options["id"] = news_item.id
+                options["type"] = news_item.type
+                options["url"] = news_item.url
+                options["title"] = title
+                
+                print(f"插件返回数据: id={news_item.id}, type={news_item.type}, url={news_item.url[:50] if news_item.url else 'None'}...")
+                
+                # 触发信号，让 QML 显示提示对话框或直接播放
+                self.protocolTriggered.emit(news_item.id, title, options)
                 return True
+                
+            except Exception as e:
+                print(f"路由到插件失败: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
         
         else:
             print(f"未知的协议动作: {action}")
             return False
+    
+    @Slot()
+    def startServer(self):
+        """启动本地 API 服务器，与浏览器协议共用开关"""
+        # 同时启动本地 API 服务器
+        if not self._local_server_running:
+            try:
+                import local_server as api_server
+                api_server.start_server()
+                self._local_server_running = True
+                print("本地 API 服务器已启动：http://localhost:45678")
+            except Exception as e:
+                print(f"启动本地服务器失败: {e}")
+    
+    @Slot()
+    def stopServer(self):
+        """停止本地 API 服务器，与浏览器协议共用开关"""
+        if self._local_server_running:
+            try:
+                import local_server as api_server
+                api_server.stop_server()
+                self._local_server_running = False
+                print("本地 API 服务器已停止")
+            except Exception as e:
+                print(f"停止本地服务器失败: {e}")
 
 
 class TrayManager(QObject):
@@ -1679,7 +1952,7 @@ def main():
         print("后台模式启动，不显示主窗口")
 
     # 设置 Windows 应用程序 ID（必须在创建 QApplication 之前）
-    if sys.platform == "win32":
+    if IS_WINDOWS:
         set_windows_app_id("ClassNEWS.App.1.0")
 
     # 检查是否已有实例在运行（单实例）
@@ -1731,16 +2004,16 @@ def main():
         news_manager = NewsManager()
         logger.success(LogCategory.DATA, "Main", "News manager created / 新闻管理器已创建")
         
-        # 快速获取系统信息（不包含公网IP，避免阻塞启动）
+        # 快速获取系统信息（不包含公网 IP，避免阻塞启动）
         system_info = get_system_info_sync()
-        logger.info(LogCategory.SYSTEM, "Main", f"System info loaded / 系统信息已加载: {system_info.get('os', 'unknown')}")
+        logger.info(LogCategory.SYSTEM, "Main", f"System info loaded / 系统信息已加载：{system_info.get('os', 'unknown')}")
         
-        # 在后台线程中异步获取完整的系统信息（包括公网IP）
+        # 在后台线程中异步获取完整的系统信息（包括公网 IP）
         system_info_worker = SystemInfoWorker()
         def on_system_info_ready(info):
             # 更新 systemInfo 上下文属性
             window.engine.rootContext().setContextProperty("systemInfo", info)
-            logger.info(LogCategory.SYSTEM, "Main", f"System info updated with IP / 系统信息已更新: {info.get('ip', 'unknown')}")
+            logger.info(LogCategory.SYSTEM, "Main", f"System info updated with IP / 系统信息已更新：{info.get('ip', 'unknown')}")
         system_info_worker.info_ready.connect(on_system_info_ready)
         system_info_worker.start()
         
@@ -1752,9 +2025,16 @@ def main():
         config_manager = ConfigManager()
         logger.success(LogCategory.CONFIG, "Main", "Config manager created / 配置管理器已创建")
         
-        # 创建视频管理器（在加载QML之前创建）
+        # 创建视频管理器（在加载 QML 之前创建）
         video_manager = VideoManager(config_manager)
         logger.success(LogCategory.VIDEO, "Main", "Video manager created / 视频管理器已创建")
+        
+        # 设置 newsManager 的 videoManager 引用（用于智能通知）
+        news_manager.setVideoManager(video_manager)
+        logger.info(LogCategory.DATA, "Main", "NewsManager linked to VideoManager / NewsManager 已关联 VideoManager")
+        
+        # 设置主窗口引用给 videoManager（用于检测窗口焦点）
+        # 注意：window 对象还未完全创建，稍后在 QML 加载后设置
 
         # 创建协议管理器
         protocol_manager = ProtocolManager(video_manager, news_manager, config_manager)
@@ -1776,7 +2056,13 @@ def main():
         window.engine.rootContext().setContextProperty("configManager", config_manager)
         window.engine.rootContext().setContextProperty("appLogger", logger)
         window.engine.rootContext().setContextProperty("protocolManager", protocol_manager)
+        window.engine.rootContext().setContextProperty("pluginManager", get_plugin_manager())
         window.engine.rootContext().setContextProperty("downloadManager", download_manager)
+        
+        # 当插件列表变化时自动刷新新闻
+        get_plugin_manager().pluginListChanged.connect(news_manager.refreshNews)
+        navigation_helper = NavigationHelper()
+        window.engine.rootContext().setContextProperty("navigationHelper", navigation_helper)
         
         # 设置调试模式（非打包环境为调试模式）
         debug_mode = not hasattr(sys, '_MEIPASS')
@@ -1805,8 +2091,8 @@ def main():
         win_event_filter = getattr(window, 'win_event_filter', None)
         logger.debug(LogCategory.SYSTEM, "Main", f"WinEventFilter retrieved: {win_event_filter}")
         
-        # 替换为自定义窗口事件过滤器，修复标题栏拖动问题
-        if win_event_filter and sys.platform == "win32":
+        # 替换为自定义窗口事件过滤器，修复标题栏拖动问题（仅 Windows）
+        if win_event_filter and IS_WINDOWS:
             from custom_window_filter import CustomWindowEventFilter
             
             # 移除旧的过滤器
@@ -1822,6 +2108,33 @@ def main():
             logger.success(LogCategory.SYSTEM, "Main", "Custom window event filter installed / 自定义窗口事件过滤器已安装")
         
         window_manager._win_event_filter = win_event_filter
+        
+        # 设置主窗口引用给 videoManager，用于检测窗口焦点
+        video_manager.setMainWindow(window)
+        logger.info(LogCategory.VIDEO, "Main", "Main window reference set to VideoManager / 主窗口引用已设置给 VideoManager")
+        
+        # 启动本地 API 服务器
+        try:
+            import local_server as api_server
+            # 启动服务器
+            api_server.start_server()
+            # 初始更新新闻数据
+            api_server.set_news_data(news_manager.news)
+            # 定期更新新闻数据（每5分钟）
+            def update_news_data():
+                try:
+                    api_server.set_news_data(news_manager.news)
+                    logger.info(LogCategory.DATA, "Main", f"本地服务器新闻数据已更新，共 {len(news_manager.news)} 条")
+                except Exception as e:
+                    logger.error(LogCategory.DATA, "Main", f"更新本地服务器新闻数据失败: {e}")
+            
+            # 每5分钟更新一次
+            news_update_timer = QTimer()
+            news_update_timer.timeout.connect(update_news_data)
+            news_update_timer.start(300000)  # 5分钟
+            logger.success(LogCategory.SYSTEM, "Main", "本地 API 服务器已启动并配置定期更新")
+        except Exception as e:
+            logger.error(LogCategory.SYSTEM, "Main", f"启动本地 API 服务器失败: {e}")
 
         # 创建系统托盘管理器
         tray_manager = TrayManager(window, icon_path)
@@ -1852,7 +2165,7 @@ def main():
         def _force_activate_window(win):
             """强制激活窗口到前台"""
             # Windows 特定：使用 Windows API 强制前台
-            if sys.platform == "win32":
+            if IS_WINDOWS:
                 try:
                     import ctypes
                     hwnd = int(win.winId())
@@ -1893,6 +2206,11 @@ def main():
         # 延迟获取新闻，等待窗口完全显示后再加载（提升启动速度）
         QTimer.singleShot(2000, news_manager.refreshNews)
         logger.info(LogCategory.DATA, "Main", "News fetch scheduled after window shown / 新闻获取已调度（窗口显示后）")
+
+        # 初始化自动刷新定时器
+        auto_refresh_interval = config_manager.autoRefreshInterval
+        news_manager.setAutoRefreshInterval(auto_refresh_interval)
+        logger.info(LogCategory.DATA, "Main", f"Auto refresh interval: {auto_refresh_interval} minutes / 自动刷新间隔: {auto_refresh_interval} 分钟")
 
         # 处理启动时传入的协议 URL
         if protocol_url:

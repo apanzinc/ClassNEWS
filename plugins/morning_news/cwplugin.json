@@ -1,0 +1,9 @@
+{
+  "id": 1,
+  "name": "朝闻天下",
+  "version": "1.0.0",
+  "author": "中国中央广播电视台",
+  "description": "来自央视，横跨CCTV-1综合、CCTV-13新闻2个频道，囊括3档新闻。",
+  "api_version": "1.0",
+  "homepage": "https://news.cctv.com/"
+}

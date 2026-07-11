@@ -30,19 +30,9 @@ ApplicationWindow {
     default property alias content: contentArea.children
     property alias floatLayer: floatLayer
 
-    // 最大化样式
-    onVisibilityChanged: {
-        if (baseWindow.visibility === Window.Maximized) {
-            background.radius = 0
-            background.border.width = 1
-        } else {
-            background.radius = Theme.currentTheme.appearance.windowRadius
-            background.border.width = 1
-        }
-    }
-
     // 布局
     ColumnLayout {
+        id: mainLayout
         anchors.fill: parent
         anchors.bottomMargin: Utils.windowDragArea
         anchors.leftMargin: Utils.windowDragArea
@@ -69,6 +59,25 @@ ApplicationWindow {
         }
     }
 
+    // 最大化样式
+    onVisibilityChanged: {
+        if (baseWindow.visibility === Window.Maximized) {
+            background.radius = 0
+            background.border.width = 1
+            // 最大化时移除边距，确保内容完整显示
+            mainLayout.anchors.leftMargin = 0
+            mainLayout.anchors.rightMargin = 0
+            mainLayout.anchors.bottomMargin = 0
+        } else {
+            background.radius = Theme.currentTheme.appearance.windowRadius
+            background.border.width = 1
+            // 恢复边距
+            mainLayout.anchors.leftMargin = Utils.windowDragArea
+            mainLayout.anchors.rightMargin = Utils.windowDragArea
+            mainLayout.anchors.bottomMargin = Utils.windowDragArea
+        }
+    }
+
     // 标题栏 - 放在 ColumnLayout 之外，确保点击事件不被拦截
     TitleBar {
         id: titleBar
@@ -81,6 +90,18 @@ ApplicationWindow {
         height: baseWindow.titleBarHeight
         maximizeEnabled: baseWindow.maximizeEnabled
         z: 1000  // 确保标题栏在最上层
+        
+        // 最大化时调整标题栏位置
+        states: State {
+            name: "maximized"
+            when: baseWindow.visibility === Window.Maximized
+            PropertyChanges {
+                target: titleBar
+                anchors.topMargin: 0
+                anchors.leftMargin: 0
+                anchors.rightMargin: 0
+            }
+        }
     }
 
     // 背景样式

@@ -7,21 +7,24 @@ import RinUI
 // 视频播放提示窗口 - 使用 FluentWindowBase（无导航栏）
 FluentWindowBase {
     id: notificationWindow
-    width: 420
-    height: 200
-    minimumWidth: 420
-    minimumHeight: 200
-    maximumWidth: 420
-    maximumHeight: 200
+    width: 400
+    height: 220
+    minimumWidth: 400
+    minimumHeight: 220
+    maximumWidth: 400
+    maximumHeight: 220
     title: "ClassNEWS"
     visible: false
-    titleBarHeight: 48  // 与主窗口一致
+    titleBarHeight: 0  // 移除标题栏
 
     // 禁用最大化按钮
     maximizeEnabled: false
 
     // 窗口背景色（与标题栏区分）
     color: Utils.colors.backgroundColor
+
+    // 窗口始终置顶
+    flags: Qt.WindowStaysOnTopHint
 
     // 目标窗口 - 用于定位
     property var targetWindow: null
@@ -87,50 +90,35 @@ FluentWindowBase {
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
-            spacing: 10
+            anchors.margins: 20
+            spacing: 12
 
-            // 标题行：包含标题文本
-            RowLayout {
+            // 大标题：新闻名称（居左），限制最多显示 20 个字符
+            Text {
                 Layout.fillWidth: true
-                spacing: 10
-
-                // 标题文本
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: newsTitle
-                        font.pixelSize: 14
-                        font.bold: true
-                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                        elide: Text.ElideRight
-                        maximumLineCount: 2
-                        horizontalAlignment: Text.AlignLeft
-                        color: Utils.colors.textColor
+                text: {
+                    var maxLength = 20;
+                    if (newsTitle.length > maxLength) {
+                        return newsTitle.substring(0, maxLength) + "...";
                     }
-
-                    // 时长信息
-                    Text {
-                        text: notificationWindow.options && notificationWindow.options.duration ? 
-                              qsTr("时长：%1").arg(notificationWindow.options.duration) : ""
-                        font.pixelSize: 11
-                        color: Utils.colors.textSecondaryColor
-                    }
+                    return newsTitle;
                 }
+                font.pixelSize: 20
+                font.bold: true
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignLeft  // 居左
+                color: Utils.colors.textColor
             }
 
-            // 副标题：倒计时提示
+            // 副标题：倒计时提示（居左）
             Text {
                 Layout.fillWidth: true
                 text: notificationWindow.isError ?
                       qsTr("播放失败：%1").arg(notificationWindow.errorMessage) :
                       qsTr("将在 %1 秒后自动播放").arg(countdownSeconds)
-                font.pixelSize: 12
-                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                horizontalAlignment: Text.AlignLeft
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignLeft  // 居左
                 color: notificationWindow.isError ? "#E81123" : Utils.colors.textColor
             }
 
@@ -143,20 +131,16 @@ FluentWindowBase {
                 visible: !notificationWindow.isError
             }
 
-            // 弹性空间 - 确保按钮有足够空间
+            // 弹性空间
             Item {
                 Layout.fillHeight: true
-                Layout.preferredHeight: 8
             }
 
             // 按钮区域
             RowLayout {
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignRight
                 spacing: 8
-
-                Item {
-                    Layout.fillWidth: true
-                }
 
                 Button {
                     text: notificationWindow.isError ? qsTr("关闭") : qsTr("延后一分钟")

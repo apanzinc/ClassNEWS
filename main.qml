@@ -108,7 +108,7 @@ FluentWindow {
                 console.log("开始下载视频:", title)
                 // 显示下载对话框，传入图片和摘要
                 downloadDialog.openDialog(
-                    pendingDownload.videoId,
+                    pendingDownload.id,
                     title,
                     videoUrl,
                     pendingDownload.image,
@@ -181,6 +181,27 @@ FluentWindow {
             if (pendingDownload !== null) {
                 pendingDownload = null
             }
+        }
+        // 系统通知请求信号（暂未使用）
+        function onRequestSystemNotification(title, message) {
+            console.log("收到系统通知请求:", title, message)
+            // 这里可以调用 Python 端的系统通知功能
+            videoManager.showSystemNotification(title, message)
+        }
+    }
+    
+    // 连接新闻管理器的信号
+    Connections {
+        target: newsManager
+        function onFetchError(title, message) {
+            console.log("新闻获取错误:", title, message)
+            // 使用 InfoBar 显示错误提示（仅当窗口在前台时）
+            mainWindow.showInfoBar(
+                title,
+                message,
+                Severity.Error,
+                5000
+            )
         }
     }
 
@@ -350,8 +371,8 @@ FluentWindow {
         if (videoNotificationWindow === null) {
             var component = Qt.createComponent("components/VideoNotificationWindow.qml")
             if (component.status === Component.Ready) {
-                // 创建为子窗口，设置目标窗口用于定位
-                videoNotificationWindow = component.createObject(mainWindow)
+                // 创建为独立窗口，无父窗口
+                videoNotificationWindow = component.createObject(null)
                 videoNotificationWindow.targetWindow = mainWindow
                 videoNotificationWindow.windowClosed.connect(function() {
                     videoNotificationWindow = null
@@ -379,7 +400,7 @@ FluentWindow {
                     console.log("windowManager 未定义，无法注册窗口")
                 }
 
-                console.log("视频播放通知窗口已创建")
+                console.log("视频播放通知窗口已创建（独立窗口）")
             } else {
                 console.error("无法创建视频播放通知窗口:", component.errorString())
             }
@@ -413,6 +434,11 @@ FluentWindow {
             title: qsTr("设置"),
             page: projectBasePath + "/pages/Settings.qml",
             icon: "ic_fluent_settings_20_regular"
+        },
+        {
+            title: qsTr("插件"),
+            page: projectBasePath + "/pages/Plugins.qml",
+            icon: "ic_fluent_puzzle_piece_20_regular"
         },
         {
             title: qsTr("关于"),
@@ -467,15 +493,34 @@ FluentWindow {
         target: typeof trayManager !== 'undefined' ? trayManager : null
         function onNavigateToSettingsRequested() {
             console.log("导航到设置页面")
-            // 使用 Qt.callLater 确保在组件加载完成后执行
             Qt.callLater(function() {
                 if (typeof navigationView !== 'undefined' && navigationView !== null) {
                     navigationView.currentIndex = 1
                 } else {
                     console.log("navigationView 未定义，尝试通过其他方式导航")
-                    // 备用方案：发送信号通知导航
                 }
             })
+        }
+    }
+
+    // 监听 NavigationHelper 信号
+    Connections {
+        target: typeof navigationHelper !== 'undefined' ? navigationHelper : null
+        function onNavigateToPluginsRequested() {
+            console.log("收到导航到插件页面请求")
+            navigationView.currentIndex = 2
+        }
+    }
+
+    // 导航到插件页面的函数（供子页面调用）
+    function goToPluginsPage() {
+        console.log("mainWindow.goToPluginsPage 被调用")
+        if (typeof navigationView !== 'undefined' && navigationView !== null) {
+            navigationView.currentIndex = 2
+        } else if (mainWindow.navigationView) {
+            mainWindow.navigationView.currentIndex = 2
+        } else {
+            console.log("无法导航：navigationView 不可用")
         }
     }
 

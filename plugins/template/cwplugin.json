@@ -1,0 +1,8 @@
+{
+  "id": 1000,
+  "name": "新闻源模板",
+  "version": "1.0.0",
+  "author": "ClassNEWS",
+  "description": "用于创建新插件的模板，默认禁用",
+  "api_version": "1.0"
+}

@@ -36,11 +36,37 @@ logs/
 
 # OS
 .DS_Store
+._*
 Thumbs.db
+
+# Virtual environments
+.venv*/
+venv*/
+venv_*/
+
+# Temporary files
+.tmp_pip/
+temp_*.txt
+test_output.txt
+*.bak
+*.backup
+*.backup.*
+
+# Dependency directories
+_deps/
+
+# pip error files (files starting with =)
+=*
 
 # Project specific
 app_*.log
 /.trae
+config.json
 
 # PyInstaller output
 /ClassNEWS/
+
+# Test scripts (development only)
+test_*.py
+test_*.bat
+自动化测试.*

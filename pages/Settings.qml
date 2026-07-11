@@ -331,6 +331,75 @@ FluentPage {
                 }
             }
         }
+
+        // 自动刷新新闻
+        SettingCard {
+            Layout.fillWidth: true
+            id: autoRefreshCard
+            property bool _syncing: false  // 防止 Slider/SpinBox 循环触发
+            title: qsTr("自动刷新新闻")
+            description: autoRefreshSpinBox.value === 0
+                         ? qsTr("已关闭自动刷新")
+                         : qsTr("每隔 %1 分钟自动刷新新闻源").arg(autoRefreshSpinBox.value)
+
+            RowLayout {
+                spacing: 12
+
+                Slider {
+                    id: autoRefreshSlider
+                    from: 0
+                    to: 120
+                    stepSize: 1
+                    value: configManager ? configManager.autoRefreshInterval : 15
+                    live: true
+                    Layout.preferredWidth: 200
+
+                    onValueChanged: {
+                        if (autoRefreshCard._syncing) return
+                        autoRefreshCard._syncing = true
+                        if (configManager) {
+                            configManager.autoRefreshInterval = value
+                        }
+                        if (newsManager) {
+                            newsManager.setAutoRefreshInterval(value)
+                        }
+                        // 同步 SpinBox
+                        autoRefreshSpinBox.value = value
+                        autoRefreshCard._syncing = false
+                    }
+                }
+
+                SpinBox {
+                    id: autoRefreshSpinBox
+                    from: 0
+                    to: 99999
+                    value: configManager ? configManager.autoRefreshInterval : 15
+                    editable: true
+                    Layout.preferredWidth: 120
+
+                    textFromValue: function(value) {
+                        return value + qsTr(" 分钟")
+                    }
+                    valueFromText: function(text) {
+                        return parseInt(text) || 0
+                    }
+
+                    onValueModified: {
+                        if (autoRefreshCard._syncing) return
+                        autoRefreshCard._syncing = true
+                        if (configManager) {
+                            configManager.autoRefreshInterval = value
+                        }
+                        if (newsManager) {
+                            newsManager.setAutoRefreshInterval(value)
+                        }
+                        // 同步 Slider（Slider 最大 120，超过时保持最大值）
+                        autoRefreshSlider.value = Math.min(value, 120)
+                        autoRefreshCard._syncing = false
+                    }
+                }
+            }
+        }
     }
 
     // 个性化设置
@@ -913,218 +982,228 @@ FluentPage {
             }
         }
 
-        // 调试工具（仅在调试模式下显示）
-        ColumnLayout {
+        // 调试工具（仅在调试模式下按需创建，避免首次打开设置页卡顿）
+        Loader {
+            id: debugToolsLoader
             Layout.fillWidth: true
-            spacing: 8
-            visible: debugModeSwitch.checked
+            active: debugModeSwitch.checked
+            sourceComponent: debugToolsComponent
+        }
 
-            // 标题
-            Text {
-                text: qsTr("调试工具")
-                font.pixelSize: 14
-                font.bold: true
-                color: Utils.colors.textColor
-            }
+        Component {
+            id: debugToolsComponent
 
-            // 视频URL输入
-            SettingCard {
-                Layout.fillWidth: true
-                title: qsTr("视频URL")
-                description: qsTr("输入视频文件路径或网络URL")
-
-                RowLayout {
-                    spacing: 8
-
-                    TextField {
-                        id: videoUrlInput
-                        Layout.preferredWidth: 250
-                        placeholderText: qsTr("输入视频URL")
-                    }
-
-                    Button {
-                        text: qsTr("播放")
-                        onClicked: {
-                            if (videoUrlInput.text.trim() !== "") {
-                                openVideoPlayer(videoUrlInput.text.trim(), qsTr("调试视频"))
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 测试视频源
-            SettingCard {
-                Layout.fillWidth: true
-                title: qsTr("测试视频")
-                description: qsTr("播放测试视频")
-
-                Button {
-                    text: qsTr("播放")
-                    onClicked: {
-                        // 使用公开的测试视频URL
-                        openVideoPlayer("https://www.w3schools.com/html/mov_bbb.mp4", qsTr("测试视频"))
-                    }
-                }
-            }
-
-            // 快速播放
-            SettingCard {
-                Layout.fillWidth: true
-                title: qsTr("快速播放")
-                description: qsTr("一键播放朝闻天下")
-
-                Button {
-                    text: qsTr("朝闻天下")
-                    onClicked: videoManager.playProgramByName("朝闻天下")
-                }
-            }
-
-            // ButtonGroup for InfoBar test radio buttons
-            ButtonGroup {
-                id: infoBarTypeGroup
-            }
-
-            // InfoBar 测试
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 8
 
                 // 标题
                 Text {
-                    text: qsTr("InfoBar 通知测试")
+                    text: qsTr("调试工具")
                     font.pixelSize: 14
                     font.bold: true
                     color: Utils.colors.textColor
                 }
 
-                // 通知设置（使用 SettingExpander）
-                SettingExpander {
+                // 视频URL输入
+                SettingCard {
                     Layout.fillWidth: true
-                    title: qsTr("通知设置")
-                    description: qsTr("配置通知类型和选项")
-                    icon.name: "ic_fluent_mail_20_regular"
-                    
-                    // 可折叠内容区域 - 使用 SettingItem
-                    SettingItem {
-                        title: qsTr("通知类型")
-                        description: qsTr("选择通知的严重程度")
-                        
-                        RowLayout {
-                            spacing: 8
-                            
-                            RadioButton {
-                                id: infoTypeRadio
-                                text: qsTr("普通")
-                                checked: true
-                                ButtonGroup.group: infoBarTypeGroup
-                            }
-                            
-                            RadioButton {
-                                id: warningTypeRadio
-                                text: qsTr("警告")
-                                ButtonGroup.group: infoBarTypeGroup
-                            }
-                            
-                            RadioButton {
-                                id: errorTypeRadio
-                                text: qsTr("错误")
-                                ButtonGroup.group: infoBarTypeGroup
-                            }
-                            
-                            RadioButton {
-                                id: successTypeRadio
-                                text: qsTr("成功")
-                                ButtonGroup.group: infoBarTypeGroup
-                            }
+                    title: qsTr("视频URL")
+                    description: qsTr("输入视频文件路径或网络URL")
+
+                    RowLayout {
+                        spacing: 8
+
+                        TextField {
+                            id: videoUrlInput
+                            Layout.preferredWidth: 250
+                            placeholderText: qsTr("输入视频URL")
                         }
-                    }
-                    
-                    SettingItem {
-                        title: qsTr("通知选项")
-                        description: qsTr("自定义通知行为")
-                        
-                        RowLayout {
-                            spacing: 16
-                            
-                            CheckBox {
-                                id: closableCheckBox
-                                text: qsTr("显示关闭按钮")
-                                checked: true
-                            }
-                            
-                            CheckBox {
-                                id: autoCloseCheckBox
-                                text: qsTr("自动关闭")
-                                checked: true
-                            }
-                            
-                            RowLayout {
-                                spacing: 8
-                                enabled: autoCloseCheckBox.checked
-                                
-                                Text {
-                                    text: qsTr("关闭时间:")
-                                    color: enabled ? Utils.colors.textColor : Utils.colors.textSecondaryColor
-                                }
-                                
-                                SpinBox {
-                                    id: timeoutSpinBox
-                                    from: 1000
-                                    to: 30000
-                                    stepSize: 1000
-                                    value: 5000
-                                    enabled: autoCloseCheckBox.checked
-                                }
-                                
-                                Text {
-                                    text: qsTr("毫秒")
-                                    color: autoCloseCheckBox.checked ? Utils.colors.textColor : Utils.colors.textSecondaryColor
+
+                        Button {
+                            text: qsTr("播放")
+                            onClicked: {
+                                if (videoUrlInput.text.trim() !== "") {
+                                    openVideoPlayer(videoUrlInput.text.trim(), qsTr("调试视频"))
                                 }
                             }
                         }
                     }
                 }
 
-                // 测试按钮
+                // 测试视频源
                 SettingCard {
                     Layout.fillWidth: true
-                    title: qsTr("发送通知")
-                    description: qsTr("点击按钮显示测试通知")
+                    title: qsTr("测试视频")
+                    description: qsTr("播放测试视频")
 
                     Button {
-                        text: qsTr("显示通知")
-                        highlighted: true
+                        text: qsTr("播放")
                         onClicked: {
-                            console.log("测试：显示 InfoBar 通知")
+                            // 使用公开的测试视频URL
+                            openVideoPlayer("https://www.w3schools.com/html/mov_bbb.mp4", qsTr("测试视频"))
+                        }
+                    }
+                }
+
+                // 快速播放
+                SettingCard {
+                    Layout.fillWidth: true
+                    title: qsTr("快速播放")
+                    description: qsTr("一键播放朝闻天下")
+
+                    Button {
+                        text: qsTr("朝闻天下")
+                        onClicked: videoManager.playProgramByName("朝闻天下")
+                    }
+                }
+
+                // ButtonGroup for InfoBar test radio buttons
+                ButtonGroup {
+                    id: infoBarTypeGroup
+                }
+
+                // InfoBar 测试
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // 标题
+                    Text {
+                        text: qsTr("InfoBar 通知测试")
+                        font.pixelSize: 14
+                        font.bold: true
+                        color: Utils.colors.textColor
+                    }
+
+                    // 通知设置（使用 SettingExpander）
+                    SettingExpander {
+                        Layout.fillWidth: true
+                        title: qsTr("通知设置")
+                        description: qsTr("配置通知类型和选项")
+                        icon.name: "ic_fluent_mail_20_regular"
+                        
+                        // 可折叠内容区域 - 使用 SettingItem
+                        SettingItem {
+                            title: qsTr("通知类型")
+                            description: qsTr("选择通知的严重程度")
                             
-                            // 确定通知类型
-                            var severity = Severity.Info
-                            if (warningTypeRadio.checked) {
-                                severity = Severity.Warning
-                            } else if (errorTypeRadio.checked) {
-                                severity = Severity.Error
-                            } else if (successTypeRadio.checked) {
-                                severity = Severity.Success
+                            RowLayout {
+                                spacing: 8
+                                
+                                RadioButton {
+                                    id: infoTypeRadio
+                                    text: qsTr("普通")
+                                    checked: true
+                                    ButtonGroup.group: infoBarTypeGroup
+                                }
+                                
+                                RadioButton {
+                                    id: warningTypeRadio
+                                    text: qsTr("警告")
+                                    ButtonGroup.group: infoBarTypeGroup
+                                }
+                                
+                                RadioButton {
+                                    id: errorTypeRadio
+                                    text: qsTr("错误")
+                                    ButtonGroup.group: infoBarTypeGroup
+                                }
+                                
+                                RadioButton {
+                                    id: successTypeRadio
+                                    text: qsTr("成功")
+                                    ButtonGroup.group: infoBarTypeGroup
+                                }
                             }
+                        }
+                        
+                        SettingItem {
+                            title: qsTr("通知选项")
+                            description: qsTr("自定义通知行为")
                             
-                            // 生成通知文本
-                            var typeText = ""
-                            switch(severity) {
-                                case Severity.Info: typeText = "普通"; break;
-                                case Severity.Warning: typeText = "警告"; break;
-                                case Severity.Error: typeText = "错误"; break;
-                                case Severity.Success: typeText = "成功"; break;
+                            RowLayout {
+                                spacing: 16
+                                
+                                CheckBox {
+                                    id: closableCheckBox
+                                    text: qsTr("显示关闭按钮")
+                                    checked: true
+                                }
+                                
+                                CheckBox {
+                                    id: autoCloseCheckBox
+                                    text: qsTr("自动关闭")
+                                    checked: true
+                                }
+                                
+                                RowLayout {
+                                    spacing: 8
+                                    enabled: autoCloseCheckBox.checked
+                                    
+                                    Text {
+                                        text: qsTr("关闭时间:")
+                                        color: enabled ? Utils.colors.textColor : Utils.colors.textSecondaryColor
+                                    }
+                                    
+                                    SpinBox {
+                                        id: timeoutSpinBox
+                                        from: 1000
+                                        to: 30000
+                                        stepSize: 1000
+                                        value: 5000
+                                        enabled: autoCloseCheckBox.checked
+                                    }
+                                    
+                                    Text {
+                                        text: qsTr("毫秒")
+                                        color: autoCloseCheckBox.checked ? Utils.colors.textColor : Utils.colors.textSecondaryColor
+                                    }
+                                }
                             }
-                            
-                            if (settingsPage.Window.window && settingsPage.Window.window.showInfoBar) {
-                                settingsPage.Window.window.showInfoBar(
-                                    qsTr("测试通知 - ") + typeText,
-                                    qsTr("这是一条") + typeText + qsTr("类型的 InfoBar 通知"),
-                                    severity,
-                                    autoCloseCheckBox.checked ? timeoutSpinBox.value : 0,
-                                    closableCheckBox.checked
-                                )
+                        }
+                    }
+
+                    // 测试按钮
+                    SettingCard {
+                        Layout.fillWidth: true
+                        title: qsTr("发送通知")
+                        description: qsTr("点击按钮显示测试通知")
+
+                        Button {
+                            text: qsTr("显示通知")
+                            highlighted: true
+                            onClicked: {
+                                console.log("测试：显示 InfoBar 通知")
+                                
+                                // 确定通知类型
+                                var severity = Severity.Info
+                                if (warningTypeRadio.checked) {
+                                    severity = Severity.Warning
+                                } else if (errorTypeRadio.checked) {
+                                    severity = Severity.Error
+                                } else if (successTypeRadio.checked) {
+                                    severity = Severity.Success
+                                }
+                                
+                                // 生成通知文本
+                                var typeText = ""
+                                switch(severity) {
+                                    case Severity.Info: typeText = "普通"; break;
+                                    case Severity.Warning: typeText = "警告"; break;
+                                    case Severity.Error: typeText = "错误"; break;
+                                    case Severity.Success: typeText = "成功"; break;
+                                }
+                                
+                                if (settingsPage.Window.window && settingsPage.Window.window.showInfoBar) {
+                                    settingsPage.Window.window.showInfoBar(
+                                        qsTr("测试通知 - ") + typeText,
+                                        qsTr("这是一条") + typeText + qsTr("类型的 InfoBar 通知"),
+                                        severity,
+                                        autoCloseCheckBox.checked ? timeoutSpinBox.value : 0,
+                                        closableCheckBox.checked
+                                    )
+                                }
                             }
                         }
                     }
@@ -1274,10 +1353,78 @@ FluentPage {
                 radius: 4
 
                 Flickable {
+                    id: logFlickable
                     anchors.fill: parent
                     anchors.margins: 8
                     contentHeight: logTextArea.height
                     clip: true
+
+                    // 优化滚动性能
+                    interactive: true
+                    flickableDirection: Flickable.VerticalFlick
+                    maximumFlickVelocity: 1500
+                    flickDeceleration: 1500
+                    boundsBehavior: Flickable.StopAtBounds
+                    synchronousDrag: false
+                    pressDelay: 100
+
+                    // 鼠标滚轮优化 - 平滑滚动动画
+                    property bool wheelScrolling: false
+                    
+                    Behavior on contentY {
+                        enabled: logFlickable.wheelScrolling
+                        NumberAnimation {
+                            duration: 150
+                            easing.type: Easing.OutQuad
+                        }
+                    }
+                    
+                    MouseArea {
+                        anchors.fill: parent
+                        propagateComposedEvents: true
+                        onWheel: (wheel) => {
+                            var delta = wheel.angleDelta.y
+                            var scrollStep = 80
+                            logFlickable.wheelScrolling = true
+                            if (delta > 0) {
+                                logFlickable.contentY = Math.max(0, logFlickable.contentY - scrollStep)
+                            } else if (delta < 0) {
+                                logFlickable.contentY = Math.min(logFlickable.contentHeight - logFlickable.height,
+                                                                 logFlickable.contentY + scrollStep)
+                            }
+                            logWheelTimer.restart()
+                            wheel.accepted = true
+                        }
+                    }
+                    
+                    Timer {
+                        id: logWheelTimer
+                        interval: 200
+                        onTriggered: logFlickable.wheelScrolling = false
+                    }
+
+                    // 触摸优化
+                    MultiPointTouchArea {
+                        anchors.fill: parent
+                        touchPoints: [TouchPoint { id: logTouch1 }]
+                        property real startY: 0
+                        property real startContentY: 0
+
+                        onPressed: (touchPoints) => {
+                            if (touchPoints.length === 1) {
+                                startY = touchPoints[0].y
+                                startContentY = logFlickable.contentY
+                            }
+                        }
+
+                        onUpdated: (touchPoints) => {
+                            if (touchPoints.length === 1) {
+                                var deltaY = touchPoints[0].y - startY
+                                logFlickable.contentY = Math.max(0, Math.min(startContentY - deltaY,
+                                    logFlickable.contentHeight - logFlickable.height))
+                            }
+                        }
+                    }
 
                     TextArea {
                         id: logTextArea

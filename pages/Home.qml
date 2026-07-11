@@ -99,12 +99,38 @@ Rectangle {
         id: loadingOverlay
         anchors.fill: parent
         color: Utils.colors.backgroundColor
+        // 当没有新闻且未在加载时隐藏，显示加载动画或错误提示
         visible: newsManager && newsManager.news ? newsManager.news.length === 0 : true
         z: 100
+
+        // 状态指示器：加载中 / 无新闻源
+        property bool isLoading: homePage.isRefreshing || (newsManager && newsManager.news && newsManager.news.length === 0 && !loadingCompleted)
+
+        // 标记是否已完成加载
+        property bool loadingCompleted: false
+
+        // 监听新闻变化，标记加载完成
+        onVisibleChanged: {
+            if (!visible) {
+                loadingCompleted = true
+            }
+        }
+
+        // 加载超时检测（10秒后自动标记加载完成）
+        Timer {
+            id: loadingTimeoutTimer
+            interval: 10000  // 10秒
+            running: loadingOverlay.visible && !loadingOverlay.loadingCompleted
+            onTriggered: {
+                console.log("新闻加载超时")
+                loadingOverlay.loadingCompleted = true
+            }
+        }
 
         Column {
             anchors.centerIn: parent
             spacing: 16
+            visible: parent.isLoading
 
             // 表情包加载动画
             AnimatedImage {
@@ -114,7 +140,7 @@ Rectangle {
                 width: 80
                 height: 80
                 fillMode: Image.PreserveAspectFit
-                playing: loadingOverlay.visible
+                playing: parent.visible
             }
 
             Text {
@@ -125,14 +151,95 @@ Rectangle {
             }
         }
 
+        // 无新闻源提示（加载完成后仍然没有新闻）
+        Column {
+            id: noNewsColumn
+            anchors.centerIn: parent
+            spacing: 16
+            visible: !parent.isLoading && loadingOverlay.visible
+            enabled: true
+
+            Icon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                name: "ic_fluent_warning_48_regular"
+                color: Utils.colors.textSecondaryColor
+                size: 48
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("暂无新闻")
+                color: Utils.colors.textColor
+                font.pixelSize: 18
+                font.bold: true
+            }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("请在「插件」页面启用新闻源插件")
+                color: Utils.colors.textSecondaryColor
+                font.pixelSize: 14
+            }
+
+            Button {
+                id: goToPluginsBtn
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("前往插件页面")
+                highlighted: true
+                onClicked: {
+                    navigationHelper.goToPlugins()
+                }
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("重试")
+                flat: true
+                onClicked: {
+                    // 检查是否有启用的插件
+                    var hasEnabledPlugin = false
+                    if (pluginManager && pluginManager.plugins) {
+                        for (var i = 0; i < pluginManager.plugins.length; i++) {
+                            if (pluginManager.plugins[i].enabled) {
+                                hasEnabledPlugin = true
+                                break
+                            }
+                        }
+                    }
+                    
+                    if (!hasEnabledPlugin) {
+                        console.log("没有启用的插件，跳过加载")
+                        // 显示提示（可选）
+                        return
+                    }
+                    
+                    // 有启用的插件，开始加载
+                    homePage.isRefreshing = true
+                    newsManager.refreshNews()
+                    loadingOverlay.loadingCompleted = false
+                    // 5秒后自动重置刷新状态
+                    Qt.callLater(function() {
+                        homePage.isRefreshing = false
+                    })
+                }
+            }
+        }
+
         // 顶部进度条
         ProgressBar {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.topMargin: 0
-            height: 3
+            height: homePage.isRefreshing ? 3 : 0
             indeterminate: true
+            visible: height > 0
+            Behavior on height {
+                NumberAnimation {
+                    duration: 200
+                    easing.type: Easing.InOutQuad
+                }
+            }
         }
     }
 
@@ -144,6 +251,83 @@ Rectangle {
         contentHeight: contentColumn.height
         clip: true
         visible: newsManager && newsManager.news ? newsManager.news.length > 0 : false
+
+        // 优化滚动性能
+        interactive: true                    // 启用交互
+        flickableDirection: Flickable.VerticalFlick  // 只允许垂直滚动
+        maximumFlickVelocity: 1500          // 限制最大滑动速度，防止滚动过快
+        flickDeceleration: 1500             // 滑动减速率，让滚动更平滑
+        boundsBehavior: Flickable.StopAtBounds // 到达边界时停止，不反弹
+        synchronousDrag: false              // 异步拖动，提高响应性
+        pressDelay: 100                     // 触摸按下延迟，避免误触
+
+        // 鼠标滚轮优化 - 平滑滚动动画
+        property real targetContentY: flickable.contentY
+        property bool wheelScrolling: false
+        
+        Behavior on contentY {
+            enabled: flickable.wheelScrolling
+            NumberAnimation {
+                duration: 150
+                easing.type: Easing.OutQuad
+            }
+        }
+        
+        MouseArea {
+            anchors.fill: parent
+            propagateComposedEvents: true
+            onWheel: (wheel) => {
+                var delta = wheel.angleDelta.y
+                var scrollStep = 80
+                
+                flickable.wheelScrolling = true
+                if (delta > 0) {
+                    flickable.contentY = Math.max(0, flickable.contentY - scrollStep)
+                } else if (delta < 0) {
+                    flickable.contentY = Math.min(flickable.contentHeight - flickable.height,
+                                                  flickable.contentY + scrollStep)
+                }
+                // 延迟关闭动画模式
+                wheelScrollTimer.restart()
+                wheel.accepted = true
+            }
+        }
+        
+        Timer {
+            id: wheelScrollTimer
+            interval: 200
+            onTriggered: flickable.wheelScrolling = false
+        }
+
+        // 触摸优化 - 支持多点触控手势
+        MultiPointTouchArea {
+            anchors.fill: parent
+            touchPoints: [
+                TouchPoint { id: touch1 },
+                TouchPoint { id: touch2 }
+            ]
+            property real startY: 0
+            property real startContentY: 0
+
+            onPressed: (touchPoints) => {
+                if (touchPoints.length === 1) {
+                    startY = touchPoints[0].y
+                    startContentY = flickable.contentY
+                }
+            }
+
+            onUpdated: (touchPoints) => {
+                if (touchPoints.length === 1) {
+                    var deltaY = touchPoints[0].y - startY
+                    flickable.contentY = Math.max(0, Math.min(startContentY - deltaY,
+                        flickable.contentHeight - flickable.height))
+                }
+            }
+
+            onReleased: (touchPoints) => {
+                // 触摸释放时可以添加惯性滚动逻辑
+            }
+        }
 
         // 滚动条
         ScrollBar.vertical: ScrollBar {
@@ -497,7 +681,7 @@ Rectangle {
                                     var newsItem = mainCard.mainNewsItem
                                     if (newsItem && newsItem.videoId) {
                                         mainWindow.pendingDownload = {
-                                            videoId: newsItem.videoId,
+                                            id: newsItem.id,
                                             title: newsItem.title,
                                             image: newsItem.image,
                                             summary: newsItem.summary
@@ -760,7 +944,7 @@ Rectangle {
                                     onClicked: {
                                         if (newsItem && newsItem.videoId) {
                                             mainWindow.pendingDownload = {
-                                                videoId: newsItem.videoId,
+                                                id: newsItem.id,
                                                 title: newsItem.title,
                                                 image: newsItem.image,
                                                 summary: newsItem.summary
@@ -992,7 +1176,7 @@ Rectangle {
                                     var item = compactCard1Flyout.currentNewsItem
                                     if (item && item.videoId) {
                                         mainWindow.pendingDownload = {
-                                            videoId: item.videoId,
+                                            id: item.id,
                                             title: item.title,
                                             image: item.image,
                                             summary: item.summary
@@ -1174,7 +1358,7 @@ Rectangle {
                                         var item = compactCardFlyout.currentNewsItem
                                         if (item && item.videoId) {
                                             mainWindow.pendingDownload = {
-                                                videoId: item.videoId,
+                                                id: item.id,
                                                 title: item.title,
                                                 image: item.image,
                                                 summary: item.summary
@@ -1375,7 +1559,7 @@ Rectangle {
                                         var item = bottomFlyout.currentNewsItem
                                         if (item && item.videoId) {
                                             mainWindow.pendingDownload = {
-                                                videoId: item.videoId,
+                                                id: item.id,
                                                 title: item.title,
                                                 image: item.image,
                                                 summary: item.summary
@@ -1587,7 +1771,7 @@ Rectangle {
                                         var item = moreNewsFlyout.currentNewsItem
                                         if (item && item.videoId) {
                                             mainWindow.pendingDownload = {
-                                                videoId: item.videoId,
+                                                id: item.id,
                                                 title: item.title,
                                                 image: item.image,
                                                 summary: item.summary

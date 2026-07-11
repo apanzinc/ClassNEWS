@@ -85,9 +85,29 @@ FluentWindowBase {
                         radius: 6
 
                         ScrollView {
+                            id: changelogScrollView
                             anchors.fill: parent
                             anchors.margins: 12
                             clip: true
+
+                            // 优化滚动性能
+                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                            // 鼠标滚轮优化
+                            MouseArea {
+                                anchors.fill: parent
+                                propagateComposedEvents: true
+                                onWheel: (wheel) => {
+                                    var delta = wheel.angleDelta.y
+                                    var vbar = changelogScrollView.ScrollBar.vertical
+                                    if (delta > 0) {
+                                        vbar.decrease()
+                                    } else if (delta < 0) {
+                                        vbar.increase()
+                                    }
+                                    wheel.accepted = true
+                                }
+                            }
 
                             Text {
                                 width: parent.width

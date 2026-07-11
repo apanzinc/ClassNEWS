@@ -9,6 +9,8 @@ Rectangle {
 
     // 当前主题属性，用于触发横幅图片更新
     property string currentTheme: ThemeManager.get_theme()
+    // 响应式断点：窄屏时提高横幅高度，给文字留出空间
+    property bool isNarrow: width < 900
 
     // 定时检查主题变化
     Timer {
@@ -58,72 +60,163 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        // 横幅区域
+        // 横幅区域 - 卡片样式
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: Math.max(aboutPage.height * 0.35, 200)
-            color: "transparent"
+            Layout.leftMargin: 24
+            Layout.rightMargin: 24
+            Layout.topMargin: 24
+            Layout.bottomMargin: 12
             radius: 8
+            color: Utils.colors.cardColor
+            border.color: Utils.colors.cardBorderColor
+            border.width: 1
             clip: true
 
+            // 图片
             Image {
                 id: bannerImage
                 anchors.fill: parent
+                anchors.margins: -1
                 source: aboutPage.currentTheme === "Dark" ? Qt.resolvedUrl("../assets/about-wallpaper-dark.png") : Qt.resolvedUrl("../assets/about-wallpaper.png")
                 fillMode: Image.PreserveAspectCrop
+                layer.enabled: true
+                layer.effect: OpacityMask {
+                    maskSource: Rectangle {
+                        width: bannerImage.width
+                        height: bannerImage.height
+                        radius: 8
+                    }
+                }
             }
 
-            // 底部渐变遮罩
+            // 文字可读性遮罩
             Rectangle {
                 anchors.fill: parent
+                radius: 8
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: "transparent" }
-                    GradientStop { position: 0.7; color: "transparent" }
-                    GradientStop { position: 1.0; color: Utils.colors.backgroundColor }
-                }
-            }
-
-            // Banner 文字内容
-            ColumnLayout {
-                anchors.left: parent.left
-                anchors.bottom: parent.bottom
-                anchors.margins: 24
-                spacing: 8
-
-                Text {
-                    text: qsTr("你的新闻，比想象中更自动。")
-                    font.pixelSize: 16
-                    color: Utils.colors.backgroundColor
-                }
-
-                Text {
-                    text: qsTr("ClassNEWS")
-                    font.pixelSize: 32
-                    font.bold: true
-                    color: Utils.colors.backgroundColor
-                }
-            }
-
-            // 顶部圆角遮罩
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 8
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: Utils.colors.backgroundColor }
+                    GradientStop { position: 0.0; color: aboutPage.currentTheme === "Dark" ? "#66000000" : "#33000000" }
                     GradientStop { position: 1.0; color: "transparent" }
+                }
+            }
+
+            // 横幅文案：左对齐，垂直居中
+            Column {
+                anchors.left: parent.left
+                anchors.leftMargin: aboutPage.isNarrow ? 28 : 40
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width * (aboutPage.isNarrow ? 0.88 : 0.64)
+                spacing: aboutPage.isNarrow ? 10 : 12
+
+                Row {
+                    spacing: 10
+
+                    Image {
+                        width: aboutPage.isNarrow ? 26 : 30
+                        height: width
+                        source: Qt.resolvedUrl("../assets/logo.png")
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("ClassNEWS")
+                        color: "white"
+                        font.pixelSize: aboutPage.isNarrow ? 18 : 22
+                        font.bold: true
+                    }
+                }
+
+                Text {
+                    width: parent.width
+                    text: qsTr("你的新闻，\n比想象中更自动。")
+                    color: "white"
+                    font.pixelSize: aboutPage.isNarrow ? 28 : 38
+                    font.bold: true
+                    lineHeight: 1.06
+                    lineHeightMode: Text.ProportionalHeight
+                    wrapMode: Text.WordWrap
                 }
             }
         }
 
         // 内容区域 - 使用 Flickable 实现滚动
         Flickable {
+            id: aboutFlickable
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.topMargin: 0
+            Layout.topMargin: 12
             contentHeight: contentColumn.height
             clip: true
+
+            // 优化滚动性能
+            interactive: true
+            flickableDirection: Flickable.VerticalFlick
+            maximumFlickVelocity: 1500
+            flickDeceleration: 1500
+            boundsBehavior: Flickable.StopAtBounds
+            synchronousDrag: false
+            pressDelay: 100
+
+            // 鼠标滚轮优化 - 平滑滚动动画
+            property bool wheelScrolling: false
+            
+            Behavior on contentY {
+                enabled: aboutFlickable.wheelScrolling
+                NumberAnimation {
+                    duration: 150
+                    easing.type: Easing.OutQuad
+                }
+            }
+            
+            MouseArea {
+                anchors.fill: parent
+                propagateComposedEvents: true
+                onWheel: (wheel) => {
+                    var delta = wheel.angleDelta.y
+                    var scrollStep = 80
+                    aboutFlickable.wheelScrolling = true
+                    if (delta > 0) {
+                        aboutFlickable.contentY = Math.max(0, aboutFlickable.contentY - scrollStep)
+                    } else if (delta < 0) {
+                        aboutFlickable.contentY = Math.min(aboutFlickable.contentHeight - aboutFlickable.height,
+                                                           aboutFlickable.contentY + scrollStep)
+                    }
+                    aboutWheelTimer.restart()
+                    wheel.accepted = true
+                }
+            }
+            
+            Timer {
+                id: aboutWheelTimer
+                interval: 200
+                onTriggered: aboutFlickable.wheelScrolling = false
+            }
+
+            // 触摸优化
+            MultiPointTouchArea {
+                anchors.fill: parent
+                touchPoints: [TouchPoint { id: aboutTouch1 }]
+                property real startY: 0
+                property real startContentY: 0
+
+                onPressed: (touchPoints) => {
+                    if (touchPoints.length === 1) {
+                        startY = touchPoints[0].y
+                        startContentY = aboutFlickable.contentY
+                    }
+                }
+
+                onUpdated: (touchPoints) => {
+                    if (touchPoints.length === 1) {
+                        var deltaY = touchPoints[0].y - startY
+                        aboutFlickable.contentY = Math.max(0, Math.min(startContentY - deltaY,
+                            aboutFlickable.contentHeight - aboutFlickable.height))
+                    }
+                }
+            }
 
             ColumnLayout {
                 id: contentColumn

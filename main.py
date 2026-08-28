@@ -177,6 +177,9 @@ def _fetch_news_via_plugin(plugin_id: int = None, max_count: int = 100):
                     "id":            item.id,
                     "isFullVersion": item.is_full_version,
                     "sourceName":    item.source_name or "",
+                    "type":          item.type or "video",
+                    "content":       item.content or "",
+                    "pluginId":      plugin.id,
                 })
             
             print(f"[插件系统] 插件 {plugin.name} 返回 {len(result.items)} 条新闻")
@@ -413,6 +416,53 @@ class NewsWorker(QThread):
             self.news_fetched.emit([])
 
 
+class NewsResolveWorker(QThread):
+    """在后台线程中通过插件解析新闻的可播放地址"""
+    resolved = Signal(str, str, dict)  # url, title, options
+    resolve_failed = Signal(str)       # 错误信息
+
+    def __init__(self, plugin_id, news_id, title, parent=None):
+        super().__init__(parent)
+        self._plugin_id = plugin_id
+        self._news_id = news_id
+        self._title = title
+
+    def run(self):
+        try:
+            import asyncio
+            pm = get_plugin_manager()
+            plugin = pm.get_plugin(self._plugin_id)
+            if plugin is None or not plugin.info.enabled:
+                self.resolve_failed.emit("插件不存在或已禁用")
+                return
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                item = loop.run_until_complete(
+                    plugin.handle_protocol_request("play", {"id": self._news_id})
+                )
+            finally:
+                loop.close()
+
+            if item is None or not item.url:
+                self.resolve_failed.emit("未能获取到可播放的媒体地址")
+                return
+
+            options = {
+                "id": item.id or self._news_id,
+                "type": item.type or "video",
+                "url": item.url,
+                "title": item.title or self._title,
+                "content": item.content or "",
+                "image": item.image_url or "",
+            }
+            self.resolved.emit(item.url, item.title or self._title, options)
+        except Exception as e:
+            print(f"解析新闻失败: {e}")
+            self.resolve_failed.emit(str(e))
+
+
 class NewsManager(QObject):
     """新闻管理器，用于在 Python 和 QML 之间传递新闻数据"""
     newsChanged = Signal()
@@ -456,6 +506,10 @@ class NewsManager(QObject):
     @Slot()
     def refreshNews(self):
         """刷新新闻数据"""
+        # 并发保护：上一次刷新尚未完成时跳过本次请求，避免旧数据覆盖新数据
+        if self._worker and self._worker.isRunning():
+            print("新闻刷新已在进行中，跳过本次请求")
+            return
         print("正在获取最新新闻...")
         self._worker = NewsWorker()
         self._worker.news_fetched.connect(self._on_news_fetched)
@@ -912,12 +966,16 @@ class ConfigManager(QObject):
 class VideoManager(QObject):
     """视频管理器，用于解析和播放视频"""
     videoParsed = Signal(str, str, dict)  # 信号：视频 URL, 视频标题，播放选项
+    audioParsed = Signal(str, str, dict)  # 信号：音频 URL, 音频标题，播放选项
+    textParsed = Signal(str, str, dict)   # 信号：资源 URL, 文本标题，播放选项
     parseError = Signal(str)  # 信号：错误信息
     requestSystemNotification = Signal(str, str)  # 信号：请求系统通知（标题，消息）
 
     def __init__(self, config_manager=None, parent=None):
         super().__init__(parent)
         self._program_worker = None
+        self._resolve_worker = None
+        self._pending_options = {}  # 存储待处理的播放选项
         self._config_manager = config_manager
         self._toast_notifier = None
         self._notification = None
@@ -952,7 +1010,6 @@ class VideoManager(QObject):
                 print(f"系统通知不可用：{title} - {message}")
         except Exception as e:
             print(f"显示系统通知失败：{e}")
-        self._pending_options = {}  # 存储待处理的播放选项
 
     @Slot(str, str)
     def showSmartNotification(self, title, message):
@@ -1040,16 +1097,64 @@ class VideoManager(QObject):
         if media_type == "video":
             self.videoParsed.emit(url, title, options)
         elif media_type == "audio":
-            # TODO: 音频播放器
-            print("音频播放暂未实现，使用视频播放器")
-            self.videoParsed.emit(url, title, options)
+            print("分发到音频播放器")
+            self.audioParsed.emit(url, title, options)
         elif media_type == "text":
-            # TODO: 文本/Markdown 展示
-            print("文本展示暂未实现")
-            self.parseError.emit("文本展示暂未实现")
+            print("分发到文本展示")
+            self.textParsed.emit(url, title, options)
         else:
             print(f"未知的媒体类型: {media_type}")
             self.parseError.emit(f"不支持的媒体类型: {media_type}")
+
+    @Slot(str, str, str)
+    def playNewsItem(self, plugin_id, news_id, title):
+        """通过插件解析新闻的可播放地址并播放（新架构入口，供 QML 调用）
+
+        Args:
+            plugin_id: 新闻来源插件 ID
+            news_id: 新闻条目 ID（插件返回的 id 字段）
+            title: 新闻标题
+        """
+        print(f"播放新闻: plugin={plugin_id}, id={news_id}, title={title}")
+        if not news_id:
+            self.parseError.emit("缺少新闻 ID")
+            return
+
+        if self._resolve_worker and self._resolve_worker.isRunning():
+            self.parseError.emit("正在解析其他新闻，请稍候")
+            return
+
+        try:
+            resolved_plugin_id = int(float(plugin_id))
+        except (TypeError, ValueError):
+            resolved_plugin_id = 0
+
+        self._resolve_worker = NewsResolveWorker(resolved_plugin_id, news_id, title)
+        self._resolve_worker.resolved.connect(self._on_news_resolved)
+        self._resolve_worker.resolve_failed.connect(self._on_news_resolve_failed)
+        self._resolve_worker.start()
+
+    def _on_news_resolved(self, url, title, options):
+        """新闻地址解析完成，按类型分发"""
+        print(f"新闻解析完成: {title}, url={url[:50]}...")
+        media_type = options.get("type", "video")
+        if media_type == "audio":
+            self.audioParsed.emit(url, title, options)
+        elif media_type == "text":
+            self.textParsed.emit(url, title, options)
+        else:
+            self.videoParsed.emit(url, title, options)
+        if self._resolve_worker:
+            self._resolve_worker.deleteLater()
+            self._resolve_worker = None
+
+    def _on_news_resolve_failed(self, error_msg):
+        """新闻地址解析失败"""
+        print(f"新闻解析失败: {error_msg}")
+        self.parseError.emit(error_msg)
+        if self._resolve_worker:
+            self._resolve_worker.deleteLater()
+            self._resolve_worker = None
 
     @Slot(str)
     def playProgramByName(self, program_name):

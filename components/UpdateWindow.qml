@@ -55,7 +55,7 @@ FluentWindowBase {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Utils.colors.dividerColor
+            color: Utils.colors.layerColor
         }
 
         // 更新信息
@@ -124,7 +124,7 @@ FluentWindowBase {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Utils.colors.dividerColor
+            color: Utils.colors.layerColor
         }
 
         // 按钮

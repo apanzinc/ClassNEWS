@@ -129,10 +129,11 @@ def upgrade_hls_quality(hls_url: str, target: str = "4000") -> str:
     Returns:
         高清地址（可能404需验证）
     """
-    # 替换路径
-    url = hls_url.replace("/main/", f"/{target}/")
-    url = hls_url.replace("/main.m3u8", f"/{target}.m3u8")
-    url = hls_url.replace("maxbr=2048", f"maxbr={target}")
+    # 替换路径（注意：必须在同一个变量上链式替换，否则前几次替换会被覆盖）
+    url = hls_url
+    url = url.replace("/main/", f"/{target}/")
+    url = url.replace("/main.m3u8", f"/{target}.m3u8")
+    url = url.replace("maxbr=2048", f"maxbr={target}")
 
     return url
 

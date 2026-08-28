@@ -27,6 +27,54 @@ FluentWindow {
     // 视频播放器窗口实例
     property var videoPlayerWindow: null
 
+    // 音频播放器窗口实例
+    property var audioPlayerWindow: null
+
+    // 文本展示窗口实例
+    property var textViewerWindow: null
+
+    // 创建音频播放器窗口
+    function createAudioPlayerWindow() {
+        if (audioPlayerWindow === null) {
+            var component = Qt.createComponent("pages/AudioPlayerWindow.qml")
+            if (component.status === Component.Ready) {
+                audioPlayerWindow = component.createObject(null)
+                audioPlayerWindow.mainWindow = mainWindow
+                audioPlayerWindow.windowClosed.connect(function() {
+                    audioPlayerWindow = null
+                })
+                console.log("音频播放器窗口已创建")
+                if (windowManager && typeof windowManager.registerWindow === 'function') {
+                    windowManager.registerWindow(audioPlayerWindow)
+                }
+            } else {
+                console.error("无法创建音频播放器窗口:", component.errorString())
+            }
+        }
+        return audioPlayerWindow
+    }
+
+    // 创建文本展示窗口
+    function createTextViewerWindow() {
+        if (textViewerWindow === null) {
+            var component = Qt.createComponent("pages/TextViewerWindow.qml")
+            if (component.status === Component.Ready) {
+                textViewerWindow = component.createObject(null)
+                textViewerWindow.mainWindow = mainWindow
+                textViewerWindow.windowClosed.connect(function() {
+                    textViewerWindow = null
+                })
+                console.log("文本展示窗口已创建")
+                if (windowManager && typeof windowManager.registerWindow === 'function') {
+                    windowManager.registerWindow(textViewerWindow)
+                }
+            } else {
+                console.error("无法创建文本展示窗口:", component.errorString())
+            }
+        }
+        return textViewerWindow
+    }
+
     // 创建视频播放器窗口
     function createVideoPlayerWindow() {
         if (videoPlayerWindow === null) {
@@ -189,6 +237,49 @@ FluentWindow {
             videoManager.showSystemNotification(title, message)
         }
     }
+
+    // 连接音频/文本媒体的信号（多内容类型泛化）
+    Connections {
+        target: videoManager
+        function onAudioParsed(audioUrl, title, options) {
+            console.log("音频就绪:", title, audioUrl)
+            if (!audioUrl || audioUrl === "") {
+                console.log("音频URL为空，不播放")
+                return
+            }
+            var player = createAudioPlayerWindow()
+            if (player) {
+                player.loadAudio(audioUrl, title, options)
+                player.show()
+                player.raise()
+                player.requestActivate()
+            } else {
+                mainWindow.showInfoBar(
+                    qsTr("播放错误"),
+                    qsTr("无法创建音频播放器窗口，请稍后重试"),
+                    Severity.Error,
+                    5000
+                )
+            }
+        }
+        function onTextParsed(textUrl, title, options) {
+            console.log("文本内容就绪:", title)
+            var viewer = createTextViewerWindow()
+            if (viewer) {
+                viewer.loadText(title, options && options.content ? options.content : "", textUrl, options)
+                viewer.show()
+                viewer.raise()
+                viewer.requestActivate()
+            } else {
+                mainWindow.showInfoBar(
+                    qsTr("打开失败"),
+                    qsTr("无法创建文本展示窗口，请稍后重试"),
+                    Severity.Error,
+                    5000
+                )
+            }
+        }
+    }
     
     // 连接新闻管理器的信号
     Connections {
@@ -294,7 +385,7 @@ FluentWindow {
             } else {
                 // 直接播放，不显示通知窗口
                 console.log("跳过通知窗口，直接播放:", pid)
-                videoManager.parseVideo(pid, title, options)
+                videoManager.playWithOptions(pid, title, options)
             }
         }
         function onProtocolTriggered(pid, title, options) {
@@ -318,7 +409,7 @@ FluentWindow {
             } else {
                 // 直接播放，不显示通知窗口
                 console.log("跳过通知窗口，直接播放:", pid)
-                videoManager.parseVideo(pid, title, options)
+                videoManager.playWithOptions(pid, title, options)
             }
         }
     }

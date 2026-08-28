@@ -146,20 +146,24 @@ class UpdateChecker(QObject):
     
     def _load_skipped_versions(self):
         """加载用户选择跳过的版本"""
-        if self._config_manager:
+        # ConfigManager 未提供通用 get() 方法，仅在有该接口时读取
+        if self._config_manager and hasattr(self._config_manager, "get"):
             skipped = self._config_manager.get("skipped_versions", [])
             self._skipped_versions = set(skipped)
     
     def _save_skipped_versions(self):
         """保存跳过的版本"""
-        if self._config_manager:
+        if self._config_manager and hasattr(self._config_manager, "set"):
             self._config_manager.set("skipped_versions", list(self._skipped_versions))
     
-    @Slot()
     def checkForUpdates(self, show_notification=True):
         """
         异步检查更新（不阻塞 UI）
-        
+
+        注意：带默认参数，不能声明为 @Slot()（QML 无法调用），
+        如需暴露给 QML，应拆分为 @Slot() checkForUpdates() 与
+        @Slot() checkForUpdatesSilently() 两个槽函数。
+
         Args:
             show_notification: 是否显示系统通知（默认 True）
         """

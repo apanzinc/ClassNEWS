@@ -123,7 +123,7 @@ def update_plugin_status(plugin_id):
     enabled = body.get('enabled', True)
     
     manager = get_plugin_manager()
-    success = manager.set_plugin_enabled(plugin_id, enabled)
+    success = manager.setPluginEnabled(plugin_id, enabled)
     
     if not success:
         return err_response(404, f"插件 {plugin_id} 不存在")

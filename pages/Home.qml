@@ -560,7 +560,7 @@ Rectangle {
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: "transparent" }
                             GradientStop { position: 0.6; color: "transparent" }
-                            GradientStop { position: 1.0; color: Utils.colors.maskColor }
+                            GradientStop { position: 1.0; color: Utils.colors.backgroundColor }
                         }
                     }
 
@@ -679,14 +679,14 @@ Rectangle {
                                 text: qsTr("下载")
                                 onClicked: {
                                     var newsItem = mainCard.mainNewsItem
-                                    if (newsItem && newsItem.videoId) {
+                                    if (newsItem && newsItem.id) {
                                         mainWindow.pendingDownload = {
                                             id: newsItem.id,
                                             title: newsItem.title,
                                             image: newsItem.image,
                                             summary: newsItem.summary
                                         }
-                                        videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                        videoManager.playNewsItem(newsItem.pluginId, newsItem.id, newsItem.title)
                                     }
                                     mainFlyout.close()
                                 }
@@ -699,11 +699,11 @@ Rectangle {
                                     var newsItem = mainCard.mainNewsItem
                                     console.log("新闻项:", newsItem ? "存在" : "不存在")
                                     if (newsItem) {
-                                        console.log("视频ID:", newsItem.videoId)
-                                        if (newsItem.videoId) {
-                                            videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                        console.log("新闻ID:", newsItem.id)
+                                        if (newsItem.id) {
+                                            videoManager.playNewsItem(newsItem.pluginId, newsItem.id, newsItem.title)
                                         } else {
-                                            console.log("没有视频ID")
+                                            console.log("没有新闻ID")
                                         }
                                     }
                                     mainFlyout.close()
@@ -783,7 +783,7 @@ Rectangle {
                                 gradient: Gradient {
                                     GradientStop { position: 0.0; color: "transparent" }
                                     GradientStop { position: 0.6; color: "transparent" }
-                                    GradientStop { position: 1.0; color: Utils.colors.maskColor }
+                                    GradientStop { position: 1.0; color: Utils.colors.backgroundColor }
                                 }
                             }
 
@@ -942,14 +942,14 @@ Rectangle {
                                 Button {
                                     text: qsTr("下载")
                                     onClicked: {
-                                        if (newsItem && newsItem.videoId) {
+                                        if (newsItem && newsItem.id) {
                                             mainWindow.pendingDownload = {
                                                 id: newsItem.id,
                                                 title: newsItem.title,
                                                 image: newsItem.image,
                                                 summary: newsItem.summary
                                             }
-                                            videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                            videoManager.playNewsItem(newsItem.pluginId, newsItem.id, newsItem.title)
                                         }
                                         gridFlyout.close()
                                     }
@@ -958,8 +958,8 @@ Rectangle {
                                     text: qsTr("播放")
                                     highlighted: true
                                     onClicked: {
-                                        if (newsItem && newsItem.videoId) {
-                                            videoManager.parseVideo(newsItem.videoId, newsItem.title)
+                                        if (newsItem && newsItem.id) {
+                                            videoManager.playNewsItem(newsItem.pluginId, newsItem.id, newsItem.title)
                                         }
                                         gridFlyout.close()
                                     }
@@ -1010,7 +1010,7 @@ Rectangle {
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: "transparent" }
                             GradientStop { position: 0.6; color: "transparent" }
-                            GradientStop { position: 1.0; color: Utils.colors.maskColor }
+                            GradientStop { position: 1.0; color: Utils.colors.backgroundColor }
                         }
                     }
 
@@ -1174,14 +1174,14 @@ Rectangle {
                                 text: qsTr("下载")
                                 onClicked: {
                                     var item = compactCard1Flyout.currentNewsItem
-                                    if (item && item.videoId) {
+                                    if (item && item.id) {
                                         mainWindow.pendingDownload = {
                                             id: item.id,
                                             title: item.title,
                                             image: item.image,
                                             summary: item.summary
                                         }
-                                        videoManager.parseVideo(item.videoId, item.title)
+                                        videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                     }
                                     compactCard1Flyout.close()
                                 }
@@ -1192,10 +1192,10 @@ Rectangle {
                                 onClicked: {
                                     var item = compactCard1Flyout.currentNewsItem
                                     console.log("播放按钮被点击，新闻项:", item ? item.title : "null")
-                                    if (item && item.videoId) {
-                                        videoManager.parseVideo(item.videoId, item.title)
+                                    if (item && item.id) {
+                                        videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                     } else {
-                                        console.log("没有视频ID，无法播放")
+                                        console.log("没有新闻ID，无法播放")
                                     }
                                     compactCard1Flyout.close()
                                 }
@@ -1236,7 +1236,7 @@ Rectangle {
                             gradient: Gradient {
                                 GradientStop { position: 0.0; color: "transparent" }
                                 GradientStop { position: 0.6; color: "transparent" }
-                                GradientStop { position: 1.0; color: Utils.colors.maskColor }
+                                GradientStop { position: 1.0; color: Utils.colors.backgroundColor }
                             }
                         }
 
@@ -1356,14 +1356,14 @@ Rectangle {
                                     text: qsTr("下载")
                                     onClicked: {
                                         var item = compactCardFlyout.currentNewsItem
-                                        if (item && item.videoId) {
+                                        if (item && item.id) {
                                             mainWindow.pendingDownload = {
                                                 id: item.id,
                                                 title: item.title,
                                                 image: item.image,
                                                 summary: item.summary
                                             }
-                                            videoManager.parseVideo(item.videoId, item.title)
+                                            videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                         }
                                         compactCardFlyout.close()
                                     }
@@ -1374,10 +1374,10 @@ Rectangle {
                                     onClicked: {
                                         var item = compactCardFlyout.currentNewsItem
                                         console.log("播放按钮被点击，新闻项:", item ? item.title : "null")
-                                        if (item && item.videoId) {
-                                            videoManager.parseVideo(item.videoId, item.title)
+                                        if (item && item.id) {
+                                            videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                         } else {
-                                            console.log("没有视频ID，无法播放")
+                                            console.log("没有新闻ID，无法播放")
                                         }
                                         compactCardFlyout.close()
                                     }
@@ -1557,14 +1557,14 @@ Rectangle {
                                     text: qsTr("下载")
                                     onClicked: {
                                         var item = bottomFlyout.currentNewsItem
-                                        if (item && item.videoId) {
+                                        if (item && item.id) {
                                             mainWindow.pendingDownload = {
                                                 id: item.id,
                                                 title: item.title,
                                                 image: item.image,
                                                 summary: item.summary
                                             }
-                                            videoManager.parseVideo(item.videoId, item.title)
+                                            videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                         }
                                         bottomFlyout.close()
                                     }
@@ -1575,10 +1575,10 @@ Rectangle {
                                     onClicked: {
                                         var item = bottomFlyout.currentNewsItem
                                         console.log("播放按钮被点击，新闻项:", item ? item.title : "null")
-                                        if (item && item.videoId) {
-                                            videoManager.parseVideo(item.videoId, item.title)
+                                        if (item && item.id) {
+                                            videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                         } else {
-                                            console.log("没有视频ID，无法播放")
+                                            console.log("没有新闻ID，无法播放")
                                         }
                                         bottomFlyout.close()
                                     }
@@ -1769,14 +1769,14 @@ Rectangle {
                                     text: qsTr("下载")
                                     onClicked: {
                                         var item = moreNewsFlyout.currentNewsItem
-                                        if (item && item.videoId) {
+                                        if (item && item.id) {
                                             mainWindow.pendingDownload = {
                                                 id: item.id,
                                                 title: item.title,
                                                 image: item.image,
                                                 summary: item.summary
                                             }
-                                            videoManager.parseVideo(item.videoId, item.title)
+                                            videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                         }
                                         moreNewsFlyout.close()
                                     }
@@ -1788,10 +1788,10 @@ Rectangle {
                                         console.log("播放按钮被点击")
                                         var item = moreNewsFlyout.currentNewsItem
                                         console.log("当前新闻项:", item ? item.title : "null")
-                                        if (item && item.videoId) {
-                                            videoManager.parseVideo(item.videoId, item.title)
+                                        if (item && item.id) {
+                                            videoManager.playNewsItem(item.pluginId, item.id, item.title)
                                         } else {
-                                            console.log("没有视频ID，无法播放")
+                                            console.log("没有新闻ID，无法播放")
                                         }
                                         moreNewsFlyout.close()
                                     }

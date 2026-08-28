@@ -176,15 +176,15 @@ def build():
         print("✨ 打包完成！")
         print("=" * 60)
         
-        # 检查输出文件
-        exe_path = dist_dir / "ClassNEWS_Debug.exe"
+        # 检查输出文件（onefile 模式，输出为 dist/ClassNEWS.exe）
+        exe_path = dist_dir / "ClassNEWS.exe"
         if exe_path.exists():
             file_size = exe_path.stat().st_size
             print(f"\n📦 输出文件：{exe_path}")
             print(f"📊 文件大小：{file_size / 1024 / 1024:.2f} MB")
             print("\n💡 提示：")
-            print("   - 可执行文件位于 dist/ClassNEWS_Debug.exe")
-            print("   - 这是多文件版本（onedir），所有依赖都在 exe 中")
+            print("   - 可执行文件位于 dist/ClassNEWS.exe")
+            print("   - 这是单文件版本（onefile），所有依赖都打包在 exe 中")
             print("   - 运行时不需要 Python 环境")
         else:
             print("\n❌ 打包失败：未找到输出文件")

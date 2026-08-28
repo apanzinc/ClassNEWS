@@ -141,7 +141,7 @@ Dialog {
         Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Utils.colors.borderColor
+            color: Utils.colors.layerColor
             visible: downloadDialog.downloadStatus !== ""
         }
 
@@ -196,7 +196,7 @@ Dialog {
                 background: Rectangle {
                     implicitHeight: 6
                     radius: 3
-                    color: Utils.colors.borderColor
+                    color: Utils.colors.layerColor
                 }
 
                 contentItem: Rectangle {
